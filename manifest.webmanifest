@@ -1,0 +1,14 @@
+{
+  "name": "PFJ Coordinación",
+  "short_name": "PFJ",
+  "description": "Herramienta para coordinadores de PFJ: consejeros, participantes, obispos y salud.",
+  "lang": "es",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F6FA",
+  "theme_color": "#1F3864",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

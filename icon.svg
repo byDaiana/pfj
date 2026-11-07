@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1F3864"/>
+  <circle cx="256" cy="200" r="70" fill="none" stroke="#FFD966" stroke-width="28"/>
+  <path d="M136 400c18-70 70-110 120-110s102 40 120 110" fill="none" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round"/>
+  <text x="256" y="476" font-family="Arial, sans-serif" font-size="64" font-weight="700" fill="#FFFFFF" text-anchor="middle">PFJ</text>
+</svg>

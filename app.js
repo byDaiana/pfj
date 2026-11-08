@@ -84,8 +84,8 @@ function toggleTheme() { UI.theme = isDark() ? 'light' : 'dark'; saveUI(); apply
 applyTheme();
 
 /* ---------- Diseño de la app (lo define la dueña desde el Probador de diseño y se guarda para todos) ---------- */
-const DESIGN_KEY = 'pfj-design2';
-const DESIGN_DEFAULT = { palette: 'institucional', icons: 'linea', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans', navico: 'rellenos' }; // elegido por Daiana el 8/11/2026
+const DESIGN_KEY = 'pfj-design4';
+const DESIGN_DEFAULT = { palette: 'institucional', icons: 'cuadro-solido', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans', navico: 'rellenos' }; // elegido por Daiana el 8/11/2026
 // Juegos de dibujos para la barra de abajo (orden: inicio, agenda, consejeros, participantes, salud, más, obispos, mapa, accesos).
 const NAV_SETS = {
   clasicos: ['home', 'calendar-event', 'users', 'mood-kid', 'heartbeat', 'layout-grid', 'mail', 'map-2', 'settings'],
@@ -332,7 +332,7 @@ async function loadData() {
   S.day1 = ((st.data || []).find((x) => x.key === 'session_day1') || {}).value || null;
   S.vapid = ((st.data || []).find((x) => x.key === 'vapid_public') || {}).value || null;
   if (S.vapid) pushSubscribe(false);
-  const dz = (st.data || []).find((x) => x.key === 'design2');  if (dz && dz.value && !designPreviewing) { try { designSaved = { ...DESIGN_DEFAULT, ...JSON.parse(dz.value) }; localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); applyDesign(designSaved); } catch { /* nada */ } }
+  const dz = (st.data || []).find((x) => x.key === 'design4');  if (dz && dz.value && !designPreviewing) { try { designSaved = { ...DESIGN_DEFAULT, ...JSON.parse(dz.value) }; localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); applyDesign(designSaved); } catch { /* nada */ } }
   // Agenda, avisos y mapa (si la base todavía no tiene esas tablas, la app sigue funcionando)
   const [sc, no, pl] = await Promise.all([
     sb.from('schedule').select('*').order('day').order('sort'),
@@ -1427,7 +1427,7 @@ function renderDesign(main) {
     if (e.target.closest('#dz-reset')) { designDraft = { ...DESIGN_DEFAULT }; return rerender(); }
     if (e.target.closest('#dz-undo')) { designDraft = { ...designSaved }; return rerender(); }
     if (e.target.closest('#dz-save')) {
-      const { error } = await sb.from('settings').upsert({ key: 'design2', value: JSON.stringify(designDraft) });
+      const { error } = await sb.from('settings').upsert({ key: 'design4', value: JSON.stringify(designDraft) });
       if (error) return toast(errMsg(error));
       designSaved = { ...designDraft }; designPreviewing = false;
       try { localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); } catch { /* nada */ }

@@ -74,11 +74,59 @@ const isDark = () => (UI.theme ? UI.theme === 'dark' : systemDark());
 function applyTheme() {
   if (UI.theme) document.documentElement.setAttribute('data-theme', UI.theme);
   else document.documentElement.removeAttribute('data-theme');
+  document.documentElement.classList.toggle('dark', isDark());
   const m = document.querySelector('meta[name="theme-color"]');
   if (m) m.setAttribute('content', isDark() ? '#16243F' : '#1F3864');
 }
 function toggleTheme() { UI.theme = isDark() ? 'light' : 'dark'; saveUI(); applyTheme(); render(); }
 applyTheme();
+
+/* ---------- Diseño de la app (lo define la dueña desde el Probador de diseño y se guarda para todos) ---------- */
+const DESIGN_KEY = 'pfj-design';
+const DESIGN_DEFAULT = { palette: 'institucional', icons: 'linea', btn: 'redondeado', nav: 'estilo8', cards: 'sombra', font: 'sistema' };
+const DESIGN_OPTS = {
+  palette: { title: 'Paleta de colores', opts: [
+    ['institucional', 'Institucional', 'Azul marino (la original)', ['#1F3864', '#DCE5F5', '#F4F6FA']],
+    ['constelacion', 'Constelación', 'Índigo y celeste, como el logo', ['#14205C', '#38BDF8', '#DBF0FF']],
+    ['violeta', 'Noche violeta', 'Violeta profundo', ['#3B1D6E', '#7C5AC9', '#ECE4FB']],
+    ['clara', 'Clara y suave', 'Azul vivo y fondo claro', ['#2563EB', '#93C5FD', '#FAFBFD']]] },
+  icons: { title: 'Íconos', opts: [
+    ['linea', 'De línea', 'Finos y simples (los originales)'],
+    ['circulo', 'En círculo', 'Dentro de un círculo suave'],
+    ['solido', 'Círculo sólido', 'Ícono blanco sobre color'],
+    ['brillo', 'Con brillo', 'Celeste luminoso, estilo constelación']] },
+  btn: { title: 'Botones', opts: [
+    ['redondeado', 'Redondeados', 'Esquinas suaves (los originales)'],
+    ['pildora', 'Píldora', 'Totalmente redondos'],
+    ['recto', 'Rectos', 'Sobrios, esquinas casi rectas'],
+    ['relieve', 'Con relieve', 'Sombra suave y degradé']] },
+  nav: { title: 'Barra de abajo', opts: [
+    ['estilo8', 'Clásica', 'La activa se expande con su nombre'],
+    ['flotante', 'Flotante', 'Separada del borde, con esquinas redondas'],
+    ['centro', 'Botón central', 'El del medio, grande y destacado']] },
+  cards: { title: 'Tarjetas', opts: [
+    ['sombra', 'Con sombra', 'Sombra suave (las originales)'],
+    ['borde', 'Planas con borde', 'Sin sombra, con línea fina'],
+    ['vidrio', 'Vidrio', 'Translúcidas sobre fondo de color']] },
+  font: { title: 'Tipografía', opts: [
+    ['sistema', 'Del sistema', 'La del celular (la original)'],
+    ['nunito', 'Nunito', 'Redondeada y amigable'],
+    ['poppins', 'Poppins', 'Moderna y geométrica'],
+    ['inter', 'Inter', 'Clara y profesional']] }
+};
+const FONT_URL = { nunito: 'Nunito:wght@400;600;700;800', poppins: 'Poppins:wght@400;500;600;700', inter: 'Inter:wght@400;500;600;700;800' };
+let designSaved = { ...DESIGN_DEFAULT };
+function applyDesign(d) {
+  const h = document.documentElement;
+  Object.keys(DESIGN_DEFAULT).forEach((k) => h.setAttribute('data-' + k, d[k] || DESIGN_DEFAULT[k]));
+  const f = d.font;
+  if (FONT_URL[f] && !document.getElementById('font-' + f)) {
+    const l = document.createElement('link'); l.id = 'font-' + f; l.rel = 'stylesheet';
+    l.href = `https://fonts.googleapis.com/css2?family=${FONT_URL[f]}&display=swap`; document.head.appendChild(l);
+  }
+}
+try { designSaved = { ...DESIGN_DEFAULT, ...JSON.parse(localStorage.getItem(DESIGN_KEY) || '{}') }; } catch { /* nada */ }
+applyDesign(designSaved);
 
 /* =============== utilidades =============== */
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -222,6 +270,7 @@ async function loadData() {
   const lbl = (st.data || []).find((x) => x.key === 'mark_label');
   if (lbl) S.markLabel = lbl.value;
   S.day1 = ((st.data || []).find((x) => x.key === 'session_day1') || {}).value || null;
+  const dz = (st.data || []).find((x) => x.key === 'design');  if (dz && dz.value && !designPreviewing) { try { designSaved = { ...DESIGN_DEFAULT, ...JSON.parse(dz.value) }; localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); applyDesign(designSaved); } catch { /* nada */ } }
   // Agenda, avisos y mapa (si la base todavía no tiene esas tablas, la app sigue funcionando)
   const [sc, no, pl] = await Promise.all([
     sb.from('schedule').select('*').order('day').order('sort'),
@@ -547,7 +596,7 @@ function renderShell(app) {
       ${S.role === 'dueno' ? `<button id="acc" class="${UI.tab === 'accesos' ? 'on' : ''}" title="Accesos y ajustes" aria-label="Accesos y ajustes" style="position:relative"><i class="ti ti-settings"></i>${S.requests.length ? `<span class="dot" style="position:absolute;top:-4px;right:-4px">${S.requests.length}</span>` : ''}</button>` : ''}
       <button id="logout" title="Salir" aria-label="Salir"><i class="ti ti-logout"></i></button>
     </header>
-    <nav class="tabs">${tabs.map((t) => `<button data-tab="${t}" class="${UI.tab === t ? 'active' : ''}" aria-label="${label(t)}" title="${label(t)}"><i class="ti ti-${t === 'salud' && S.role === 'cocina' ? 'tools-kitchen-2' : TAB_INFO[t].ico}"></i><span class="lbl">${label(t)}</span></button>`).join('')}</nav>
+    <nav class="tabs">${tabs.map((t, i) => `<button data-tab="${t}" class="${UI.tab === t ? 'active' : ''}${i === Math.floor(tabs.length / 2) ? ' mid' : ''}" aria-label="${label(t)}" title="${label(t)}"><i class="ti ti-${t === 'salud' && S.role === 'cocina' ? 'tools-kitchen-2' : TAB_INFO[t].ico}"></i><span class="lbl">${label(t)}</span></button>`).join('')}</nav>
     ${S.role === 'dueno' && S.requests.length && UI.tab !== 'accesos' ? `<div class="reqbar">🔔 ${plural(S.requests.length, 'solicitud de acceso pendiente', 'solicitudes de acceso pendientes')} <button class="btn btn-sm" id="goreq">Revisar</button></div>` : ''}
     <main id="main"></main>`;
   $('#logout').onclick = logout;
@@ -1260,6 +1309,43 @@ async function renderMap(main) {
 }
 
 /* ---------- Más: menú de secciones ---------- */
+/* Probador de diseño (solo la dueña): se ve al instante y se guarda para todos. */
+let designPreviewing = false, designDraft = null;
+function renderDesign(main) {
+  if (!designDraft) designDraft = { ...designSaved };
+  const changed = JSON.stringify(designDraft) !== JSON.stringify(designSaved);
+  main.innerHTML = `<h2 class="page">Diseño de la app</h2>
+    <p class="sub">Tocá las opciones: los cambios se ven al instante en toda la app. Cuando te guste, tocá <b>Guardar para todos</b>.</p>
+    <div class="panel dz-demo" style="padding:14px 16px">
+      <div class="tipo-h" style="margin:0"><i class="ti ti-eye"></i>Vista previa</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm"><i class="ti ti-check"></i> Principal</button><button class="btn btn-sm"><i class="ti ti-pencil"></i> Secundario</button><span class="chip on">Filtro activo</span><span class="chip">Filtro</span></div>
+      <div class="row-item"><span class="menu-ic"><i class="ti ti-calendar-event"></i></span><div class="grow"><b>Estudio del Evangelio</b><div class="note">8:30 · Punto de encuentro</div></div><span class="badge ok">Ahora</span></div>
+    </div>
+    ${Object.entries(DESIGN_OPTS).map(([k, g]) => `<div class="dz-sec"><div class="menu-t">${esc(g.title)}</div><div class="dz-opts">${g.opts.map(([v, label, desc, sw]) => `
+      <button class="dz-opt ${designDraft[k] === v ? 'on' : ''}" data-k="${k}" data-v="${v}">
+        ${sw ? `<div class="dz-sw">${sw.map((c) => `<i style="background:${c}"></i>`).join('')}</div>` : ''}<b>${esc(label)}</b><span>${esc(desc)}</span></button>`).join('')}</div></div>`).join('')}
+    <div class="dz-bar">
+      <span class="note" style="flex:1">${changed ? 'Tenés cambios sin guardar.' : 'Así está guardado para todos.'}</span>
+      <button class="btn btn-sm" id="dz-reset"><i class="ti ti-rotate"></i> Original</button>
+      <button class="btn btn-sm" id="dz-undo" ${changed ? '' : 'disabled'}>Descartar</button>
+      <button class="btn btn-primary btn-sm" id="dz-save" ${changed ? '' : 'disabled'}><i class="ti ti-device-floppy"></i> Guardar para todos</button>
+    </div>`;
+  const rerender = () => { applyDesign(designDraft); designPreviewing = JSON.stringify(designDraft) !== JSON.stringify(designSaved); render(); };
+  main.onclick = async (e) => {
+    const o = e.target.closest('.dz-opt');
+    if (o) { designDraft[o.dataset.k] = o.dataset.v; return rerender(); }
+    if (e.target.closest('#dz-reset')) { designDraft = { ...DESIGN_DEFAULT }; return rerender(); }
+    if (e.target.closest('#dz-undo')) { designDraft = { ...designSaved }; return rerender(); }
+    if (e.target.closest('#dz-save')) {
+      const { error } = await sb.from('settings').upsert({ key: 'design', value: JSON.stringify(designDraft) });
+      if (error) return toast(errMsg(error));
+      designSaved = { ...designDraft }; designPreviewing = false;
+      try { localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); } catch { /* nada */ }
+      toast('Diseño guardado: lo ven todos al abrir la app'); render();
+    }
+  };
+}
+
 const MORE_SECTIONS = [
   { title: 'Durante la conferencia', items: [
     { id: 'recordatorios', label: 'Recordatorios', ico: 'bell-ringing', desc: 'Próximas actividades y avisos', show: (r) => r !== 'obispo' },
@@ -1276,7 +1362,8 @@ const MORE_SECTIONS = [
     { id: 'recursos', label: 'Recursos', ico: 'books', desc: 'Manuales, videos, himnos y juegos', show: () => true }
   ] },
   { title: 'Cuenta', items: [
-    { id: 'perfil', label: 'Mi perfil', ico: 'user-circle', desc: 'Nombre, teléfono y notificaciones', show: () => true }
+    { id: 'perfil', label: 'Mi perfil', ico: 'user-circle', desc: 'Nombre, teléfono y notificaciones', show: () => true },
+    { id: 'diseno', label: 'Diseño de la app', ico: 'palette', desc: 'Colores, íconos, botones y letra', show: (r) => r === 'dueno' }
   ] }
 ];
 const MORE = MORE_SECTIONS.flatMap((s) => s.items);
@@ -1288,7 +1375,7 @@ function renderMore(main) {
     $('#back', main).onclick = () => { UI.sub = null; saveUI(); render(); window.scrollTo(0, 0); };
     const sub = $('#sub', main);
     if (S.offline && !['mapa', 'perfil', 'recordatorios'].includes(m.id)) { sub.innerHTML = '<div class="empty"><p>Esta sección necesita conexión.</p></div>'; return; }
-    return ({ companias: renderCompanies, recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile, recordatorios: renderRemindersPage }[m.id])(sub);
+    return ({ companias: renderCompanies, recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile, recordatorios: renderRemindersPage, diseno: renderDesign }[m.id])(sub);
   }
   main.innerHTML = `<h2 class="page">Más</h2>` + MORE_SECTIONS.map((s) => {
     const vis = s.items.filter((m) => m.show(S.role));

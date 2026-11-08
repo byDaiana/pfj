@@ -38,7 +38,8 @@ const TABS_BY_ROLE = {
   cocina: ['agenda', 'salud', 'mapa']
 };
 const can = {
-  editEvent: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
+  // Agenda, avisos y mapa: solo la dueña y los coordinadores pueden modificarlos.
+  editEvent: (r) => ['dueno', 'coordinador'].includes(r),
   mark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero'].includes(r),
   bishopMark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
   export: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r)
@@ -841,9 +842,9 @@ function renderAgenda(main) {
             <b>${esc(r.title)}</b>${isNow ? ' <span class="badge ok">Ahora</span>' : ''}
             ${r.place ? `<div class="note"><i class="ti ti-map-pin"></i> ${esc(r.place)}</div>` : ''}
             ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}
-            ${r.guide ? `<details class="guide"><summary><i class="ti ti-info-circle"></i> Indicaciones</summary><div>${esc(r.guide).replace(/\n\n/g, '<hr>').replace(/\n/g, '<br>')}</div></details>` : ''}
             ${myCol && r[myCol] && r[myCol] !== '—' ? `<div class="badges"><span class="badge ${/^Dirigen|^Enseñan/.test(r[myCol]) ? 'pend' : ''}">Vos: ${esc(r[myCol])}</span></div>` : ''}
             ${!myCol && roles.length ? `<details class="note"><summary>Quién participa</summary>${roles.map((k) => `${COL_NAME[k]}: ${esc(r[k])}`).join('<br>')}</details>` : ''}
+            ${r.guide ? `<details class="note guide"><summary>Indicaciones</summary>${esc(r.guide).replace(/\n\n/g, '<hr>').replace(/\n/g, '<br>')}</details>` : ''}
           </div>
           ${editor ? `<button class="btn btn-sm" data-edit="${r.id}" aria-label="Editar actividad"><i class="ti ti-pencil"></i></button>` : ''}
         </div>`;

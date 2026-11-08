@@ -27,21 +27,26 @@ const ROLES = {
 const roleName = (r) => (r === 'dueno' ? 'Dueña' : ROLES[r] || r);
 const TABS_BY_ROLE = {
   // «Accesos» ya no es una pestaña: es el botón de engranaje de arriba (solo la dueña).
-  dueno: ['inicio', 'agenda', 'consejeros', 'participantes', 'obispos', 'salud', 'mapa'],
-  coordinador: ['inicio', 'agenda', 'consejeros', 'participantes', 'obispos', 'salud', 'mapa'],
-  matrimonio_director: ['inicio', 'agenda', 'consejeros', 'participantes', 'obispos', 'salud', 'mapa'],
-  coord_auxiliar: ['inicio', 'agenda', 'consejeros', 'participantes', 'obispos', 'mapa'],
-  coord_bienestar: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mapa'],
-  consejero: ['agenda', 'participantes', 'mapa'],
-  obispo: ['consejeros', 'participantes'],
-  enfermeria: ['agenda', 'salud', 'consejeros', 'participantes', 'mapa'],
-  cocina: ['agenda', 'salud', 'mapa']
+  // «Más» agrupa: Mapa, Obispos, Recuentos, Incidentes, Directorio, Recursos y Mi perfil.
+  dueno: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
+  coordinador: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
+  matrimonio_director: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
+  coord_auxiliar: ['inicio', 'agenda', 'consejeros', 'participantes', 'mas'],
+  coord_bienestar: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
+  consejero: ['agenda', 'participantes', 'mas'],
+  obispo: ['agenda', 'consejeros', 'participantes', 'mas'],
+  enfermeria: ['agenda', 'salud', 'consejeros', 'participantes', 'mas'],
+  cocina: ['agenda', 'salud', 'mas']
 };
+const inRoles = (list) => (r) => list.includes(r);
 const can = {
   // Agenda, avisos y mapa: solo la dueña y los coordinadores pueden modificarlos.
   editEvent: (r) => ['dueno', 'coordinador'].includes(r),
   // Avisos: dueña, coordinadores y matrimonio director.
   postNotice: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r),
+  health: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_bienestar', 'enfermeria']),
+  headcount: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero']),
+  seeAllHeadcounts: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar']),
   mark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero'].includes(r),
   bishopMark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
   export: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r)
@@ -53,6 +58,7 @@ const S = {
   people: [], bishopMarks: {}, markLabel: 'Confirmado',
   users: [], requests: [],
   schedule: [], notices: [], places: [], day1: null, extrasOk: true,
+  reads: [], offline: false,
   loading: false
 };
 const UI_KEY = 'pfj-ui-v2'; // solo preferencias de pantalla (pestaña, grupos abiertos); nada personal
@@ -221,6 +227,9 @@ async function loadData() {
   ]);
   S.extrasOk = !sc.error && !no.error && !pl.error;
   S.schedule = sc.data || []; S.notices = no.data || []; S.places = pl.data || [];
+  const rd = await sb.from('notice_reads').select('notice_id,email,read_at');
+  S.reads = rd.error ? [] : rd.data || [];
+  saveOfflineCopy();
   if (can.bishopMark(S.role)) {
     const { data } = await sb.from('bishop_marks').select('bishop_key,value');
     S.bishopMarks = Object.fromEntries((data || []).map((x) => [x.bishop_key, x.value]));
@@ -262,9 +271,78 @@ async function boot() {
     await loadMe();
     if (/access_token|error_description|[?&]code=/.test(location.href)) history.replaceState(null, '', APP_URL);
     if (linkFailed && !S.email) toast('El enlace venció o ya se usó. Pedí uno nuevo.');
-    if (S.role) await loadData();
-  } catch (e) { console.error(e); toast(errMsg(e)); }
+    if (S.role) { await loadData(); S.offline = false; startLive(); startReminders(); }
+  } catch (e) {
+    console.error(e);
+    // Sin conexión: mostrar la última agenda guardada en este celular (sin datos de personas).
+    if (!navigator.onLine || /Failed to fetch|NetworkError/i.test(String(e && e.message))) {
+      if (loadOfflineCopy()) { S.offline = true; UI.tab = 'agenda'; startReminders(); }
+    } else toast(errMsg(e));
+  }
   render();
+}
+
+/* ---------- copia sin conexión de la agenda (solo horario, avisos y lugares; nada de datos personales) ---------- */
+const OFF_KEY = 'pfj-agenda-offline';
+function saveOfflineCopy() {
+  try { localStorage.setItem(OFF_KEY, JSON.stringify({ email: S.email, role: S.role, day1: S.day1, schedule: S.schedule.map(({ updated_by, ...r }) => r), notices: S.notices.map((n) => ({ id: n.id, body: n.body, important: n.important, created_at: n.created_at })), places: S.places, at: Date.now() })); } catch { /* sin espacio */ }
+}
+function loadOfflineCopy() {
+  try {
+    const c = JSON.parse(localStorage.getItem(OFF_KEY) || 'null');
+    if (!c || !c.role) return false;
+    Object.assign(S, { email: S.email || c.email, role: c.role, day1: c.day1, schedule: c.schedule || [], notices: c.notices || [], places: c.places || [], extrasOk: true });
+    return true;
+  } catch { return false; }
+}
+window.addEventListener('online', () => { if (S.offline) boot(); });
+
+/* ---------- cambios en vivo ---------- */
+let liveChannel = null;
+function startLive() {
+  if (liveChannel) return;
+  liveChannel = sb.channel('pfj-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, () => liveRefresh('schedule'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, () => liveRefresh('notices'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'incidents' }, () => liveRefresh('incidents'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'headcounts' }, () => liveRefresh('headcounts'))
+    .subscribe();
+}
+let liveTimer = null;
+function liveRefresh(what) {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(async () => {
+    if (what === 'schedule') { const { data } = await sb.from('schedule').select('*').order('day').order('sort'); if (data) S.schedule = data; toast('La agenda se actualizó'); }
+    if (what === 'notices') { const { data } = await sb.from('notices').select('*').order('created_at', { ascending: false }); if (data) { const nuevo = data.length > S.notices.length; S.notices = data; if (nuevo) { toast('Nuevo aviso de la coordinación'); notify('Nuevo aviso de la coordinación', data[0]?.body || ''); } } }
+    if (what === 'incidents' && can.health(S.role)) { toast('Hay novedades en Incidentes'); notify('PFJ · Incidentes', 'Se registró o actualizó un incidente.'); }
+    saveOfflineCopy();
+    const formOpen = document.querySelector('#evf, #pf, #incf, #hcf, #hlf');
+    if (!formOpen && (['agenda', 'inicio'].includes(UI.tab) || (UI.tab === 'mas' && ['incidentes', 'recuentos'].includes(UI.sub)))) render();
+  }, 600);
+}
+
+/* ---------- recordatorios 10 minutos antes (mientras la app está abierta o en segundo plano) ---------- */
+const REM_KEY = 'pfj-recordatorios';
+let remTimer = null; const remSent = new Set();
+function notify(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted' || localStorage.getItem(REM_KEY) !== '1') return;
+  const opts = { body, icon: 'icon.svg', badge: 'icon.svg', tag: title + body };
+  navigator.serviceWorker?.getRegistration().then((r) => (r ? r.showNotification(title, opts) : new Notification(title, opts))).catch(() => {});
+}
+function startReminders() {
+  clearInterval(remTimer);
+  const tick = () => {
+    if (localStorage.getItem(REM_KEY) !== '1') return;
+    const today = todayDayNumber(); if (today === null) return;
+    const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+    const myCol = ROLE_COL[S.role];
+    S.schedule.filter((r) => r.day === today && (!myCol || (r[myCol] && r[myCol] !== '—'))).forEach((r) => {
+      const s = toMin(r.start_time); if (s === null) return;
+      const key = `${today}|${r.id}`;
+      if (s - nowMin <= 10 && s - nowMin >= 0 && !remSent.has(key)) { remSent.add(key); notify(`En ${s - nowMin} min: ${r.title}`, [r.start_time, r.place].filter(Boolean).join(' · ')); }
+    });
+  };
+  tick(); remTimer = setInterval(tick, 60000);
 }
 
 function render() {
@@ -413,6 +491,9 @@ function renderLogin(app) {
 }
 
 async function logout() {
+  if (liveChannel) { sb.removeChannel(liveChannel); liveChannel = null; }
+  clearInterval(remTimer);
+  try { localStorage.removeItem(OFF_KEY); } catch { /* nada */ }
   await sb.auth.signOut();
   Object.assign(S, { email: null, role: null, stake: null, people: [], users: [], requests: [], bishopMarks: {} });
   render();
@@ -435,6 +516,7 @@ const TAB_INFO = {
   salud: { label: 'Salud', ico: 'heartbeat' },
   agenda: { label: 'Agenda', ico: 'calendar-event' },
   mapa: { label: 'Mapa', ico: 'map-2' },
+  mas: { label: 'Más', ico: 'layout-grid' },
   accesos: { label: 'Accesos', ico: 'settings' }
 };
 
@@ -465,6 +547,8 @@ function renderShell(app) {
   if (UI.tab === 'accesos') return renderAccess(main);
   if (UI.tab === 'agenda') return renderAgenda(main);
   if (UI.tab === 'mapa') return renderMap(main);
+  if (UI.tab === 'mas') return renderMore(main);
+  if (S.offline) return renderAgenda(main);
   if (!S.people.length) return renderNoData(main);
   ({ inicio: renderHome, consejeros: (m) => renderList(m, 'Consejero'), participantes: (m) => renderList(m, 'Participante'), obispos: renderBishops, salud: renderHealth }[UI.tab])(main);
 }
@@ -496,6 +580,11 @@ function bindDropzone(root) {
 
 /* ---------- Inicio ---------- */
 function renderHome(main) {
+  renderHomeInner(main);
+  const nn = nowNextCard();
+  if (nn) $('.stats', main)?.insertAdjacentHTML('beforebegin', nn);
+}
+function renderHomeInner(main) {
   const all = S.people;
   const C = all.filter((p) => p.tipo === 'Consejero'), P = all.filter((p) => p.tipo === 'Participante');
   const mk = (list, v) => list.filter((p) => p.mark === v).length;
@@ -720,9 +809,29 @@ function renderHealth(main) {
         ${p.med_flag && has(p.med) ? `<div><div class="k">Médico</div><div class="hl">${esc(p.med)}</div></div>` : ''}
         ${p.food_flag && has(p.food) ? `<div><div class="k">Alimentación</div><div class="hl">${esc(p.food)}</div></div>` : ''}
         ${has(p.c1n) || has(p.c1t) ? `<div><div class="k">Emergencia</div>${esc(p.c1n || '')} · ${esc(p.c1t || '')}${contactLinks(p.c1t, '')}</div>` : ''}
+        ${can.health(S.role) ? `<div style="grid-column:1/-1"><button class="btn btn-sm" data-hl="${esc(p.id)}"><i class="ti ti-notes"></i> Registro de salud</button><div data-hlbox="${esc(p.id)}"></div></div>` : ''}
       </div></div>`, 'list') || `<div class="empty"><div class="big"><i class="ti ti-search"></i></div><p>No hay resultados${q ? ` para «${esc(healthState.q)}»` : ''}.</p></div>`;
   };
   draw();
+  // Registro de medicación y consultas (coordinación, bienestar y enfermería)
+  $('#hlist', main).onclick = async (e) => {
+    const b = e.target.closest('[data-hl]'); if (!b) return;
+    const pid = b.dataset.hl, box = main.querySelector(`[data-hlbox="${CSS.escape(pid)}"]`);
+    if (box.innerHTML) { box.innerHTML = ''; return; }
+    const { data, error } = await sb.from('health_logs').select('*').eq('person_id', pid).order('created_at', { ascending: false });
+    if (dbMissing(error)) { box.innerHTML = '<p class="note">Falta activar el registro de salud (SQL 07).</p>'; return; }
+    box.innerHTML = `<form id="hlf" class="form-inline" style="margin:8px 0">
+        <select class="input" id="hl-k" style="flex:0 1 150px"><option>Medicación</option><option>Consulta</option></select>
+        <input class="input" id="hl-n" maxlength="500" placeholder="Ej.: Allegra 120 mg 8:00 · dolor de cabeza" required>
+        <button class="btn btn-sm btn-primary">Registrar</button></form>
+      <div class="note">${(data || []).map((h) => `<b>${esc(h.kind)}</b> · ${fmtWhen(h.created_at)} · ${esc(h.note || '')} <span style="opacity:.8">(${esc(h.created_by || '')})</span>`).join('<br>') || 'Sin registros todavía.'}</div>`;
+    $('#hlf', box).onsubmit = async (ev) => {
+      ev.preventDefault();
+      const { error: err } = await sb.from('health_logs').insert({ person_id: pid, kind: $('#hl-k', box).value, note: clean($('#hl-n', box).value), created_by: S.email });
+      if (err) return toast(errMsg(err));
+      box.innerHTML = ''; b.click(); toast('Registrado');
+    };
+  };
   $('#hq', main).oninput = (e) => { healthState.q = e.target.value; draw(); };
   if ($('#hf', main)) $('#hf', main).onclick = (e) => { const b = e.target.closest('[data-f]'); if (!b) return; healthState.filter = b.dataset.f; main.querySelectorAll('#hf .chip').forEach((c) => c.classList.toggle('on', c === b)); draw(); };
   $('#prn').onclick = () => window.print();
@@ -749,8 +858,25 @@ function todayDayNumber() {
   return Math.round((now - d1) / 86400000) + 1;
 }
 
+/* «Ahora y lo que sigue»: la actividad en curso y la próxima de hoy (respeta lo del rol si corresponde). */
+function nowNextCard() {
+  const today = todayDayNumber();
+  if (today === null || !S.schedule.length) return '';
+  const myCol = ROLE_COL[S.role];
+  const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+  const list = S.schedule.filter((r) => r.day === today && toMin(r.start_time) !== null && (!myCol || (r[myCol] && r[myCol] !== '—')))
+    .sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
+  if (!list.length) return '';
+  const cur = list.filter((r) => toMin(r.start_time) <= nowMin && nowMin < (toMin(r.end_time) ?? toMin(r.start_time) + 15));
+  const next = list.find((r) => toMin(r.start_time) > nowMin);
+  if (!cur.length && !next) return '';
+  const item = (r, label, cls) => `<div class="nn-item ${cls}"><div class="nn-k">${label}</div><b>${esc(r.title)}</b><div class="note">${esc(r.start_time)}${r.end_time ? '–' + esc(r.end_time) : ''}${r.place ? ' · <i class="ti ti-map-pin"></i> ' + esc(r.place) : ''}${myCol && r[myCol] ? ' · Vos: ' + esc(r[myCol]) : ''}</div></div>`;
+  return `<div class="panel nn">${cur.map((r) => item(r, 'Ahora', 'now')).join('')}${next ? item(next, `Lo que sigue · en ${toMin(next.start_time) - nowMin} min`, '') : ''}</div>`;
+}
+const ROLE_OPTIONS = () => Object.entries(ROLES);
+
 function renderAgenda(main) {
-  const editor = can.editEvent(S.role);
+  const editor = can.editEvent(S.role) && !S.offline;
   if (!S.extrasOk) {
     main.innerHTML = `<div class="empty"><div class="big"><i class="ti ti-database-off"></i></div><p>La agenda todavía no está activada en la base de datos.${S.role === 'dueno' ? '<br>Falta ejecutar <b>04_agenda_avisos_mapa.sql</b> en Supabase.' : ''}</p></div>`;
     return;
@@ -762,6 +888,9 @@ function renderAgenda(main) {
   main.innerHTML = `
     <h2 class="page">Agenda</h2>
     <p class="sub">${S.day1 ? `La conferencia empieza el ${dayDate(1).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}.` : 'Todavía no se cargó la fecha del Día 1.'}</p>
+    ${S.offline ? '<div class="callout warn"><i class="ti ti-wifi-off"></i> Sin conexión: estás viendo la última agenda guardada en este celular. Se actualiza sola cuando vuelva la señal.</div>' : ''}
+    ${nowNextCard()}
+    ${(() => { const n = S.schedule.filter((r) => r.changed_at && Date.now() - new Date(r.changed_at) < 86400000).length; return n ? `<div class="callout"><i class="ti ti-refresh-alert"></i> ${plural(n, 'actividad cambió', 'actividades cambiaron')} en las últimas 24 horas (marcadas con «Cambió»).</div>` : ''; })()}
     <section id="avisos"></section>
     <div class="panel" style="padding:12px 16px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -782,22 +911,35 @@ function renderAgenda(main) {
 
   const drawNotices = () => {
     const box = $('#avisos', main);
-    const editor = can.postNotice(S.role); // los avisos tienen su propio permiso
+    const editor = can.postNotice(S.role) && !S.offline; // los avisos tienen su propio permiso
+    const readBy = (id) => S.reads.filter((x) => x.notice_id === id);
+    const iRead = (id) => readBy(id).some((x) => x.email === S.email);
+    const audienceLabel = (a) => (a && a.length ? 'Para: ' + a.map((r) => roleName(r)).join(', ') : 'Para todos');
     box.innerHTML = `<div class="panel" style="padding:12px 16px">
       <h3 style="margin:0 0 10px"><i class="ti ti-speakerphone"></i> Avisos de la coordinación</h3>
       ${editor ? `<form id="nf" style="display:grid;gap:8px;margin-bottom:12px">
-        <textarea class="input" id="nt" rows="2" maxlength="1000" placeholder="Escribí un aviso para todo el equipo" required></textarea>
+        <textarea class="input" id="nt" rows="2" maxlength="1000" placeholder="Escribí un aviso" required></textarea>
+        <details class="note"><summary>Para quién (si no elegís nada, va para todos)</summary>
+          <div class="aud">${ROLE_OPTIONS().map(([k, v]) => `<label><input type="checkbox" name="aud" value="${k}"> ${esc(v)}</label>`).join('')}</div></details>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ni"> Importante</label><span style="flex:1"></span><button class="btn btn-primary btn-sm"><i class="ti ti-send"></i> Publicar</button></div>
       </form>` : ''}
-      <div class="list">${S.notices.length ? S.notices.map((n) => `<div class="row-item notice ${n.important ? 'imp' : ''}">
+      <div class="list">${S.notices.length ? S.notices.map((n) => `<div class="row-item notice ${n.important ? 'imp' : ''} ${!editor && !iRead(n.id) ? 'unread' : ''}">
         <div class="grow">${n.important ? '<span class="badge bad" style="margin-bottom:4px;display:inline-block">Importante</span><br>' : ''}${esc(n.body).replace(/\n/g, '<br>')}
-          <div class="note" style="margin-top:4px">${new Date(n.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}${n.created_by ? ' · ' + esc(n.created_by) : ''}</div></div>
+          <div class="note" style="margin-top:4px">${new Date(n.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}${n.created_by ? ' · ' + esc(n.created_by) : ''} · ${esc(audienceLabel(n.audience))}</div>
+          ${editor ? `<details class="note"><summary>Leído por ${readBy(n.id).length}</summary>${readBy(n.id).map((x) => esc(x.email)).join('<br>') || 'Nadie todavía'}</details>` : ''}</div>
         ${editor ? `<button class="btn btn-sm btn-danger" data-delnotice="${n.id}" aria-label="Borrar aviso"><i class="ti ti-trash"></i></button>` : ''}</div>`).join('') : '<p class="note" style="margin:0">No hay avisos por ahora.</p>'}</div></div>`;
+    // Marca como leídos los avisos que esta persona acaba de ver.
+    if (!S.offline) {
+      const pend = S.notices.filter((n) => !iRead(n.id));
+      if (pend.length) sb.from('notice_reads').upsert(pend.map((n) => ({ notice_id: n.id, email: S.email })), { onConflict: 'notice_id,email', ignoreDuplicates: true })
+        .then(({ error }) => { if (!error) pend.forEach((n) => S.reads.push({ notice_id: n.id, email: S.email })); });
+    }
     if (editor) {
       $('#nf', box).onsubmit = async (e) => {
         e.preventDefault();
         const body = clean($('#nt', box).value); if (!body) return;
-        const { error } = await sb.from('notices').insert({ body, important: $('#ni', box).checked, created_by: S.email });
+        const aud = [...box.querySelectorAll('input[name="aud"]:checked')].map((x) => x.value);
+        const { error } = await sb.from('notices').insert({ body, important: $('#ni', box).checked, created_by: S.email, audience: aud.length ? aud : null });
         if (error) return toast(errMsg(error));
         const { data } = await sb.from('notices').select('*').order('created_at', { ascending: false });
         S.notices = data || []; drawNotices(); toast('Aviso publicado');
@@ -842,7 +984,7 @@ function renderAgenda(main) {
         return `<div class="row-item ev ${isNow ? 'now' : ''}" data-ev="${r.id}">
           <div class="ev-time">${esc(r.start_time || '—')}${r.end_time ? `<br><span class="note">${esc(r.end_time)}</span>` : ''}</div>
           <div class="grow">
-            <b>${esc(r.title)}</b>${isNow ? ' <span class="badge ok">Ahora</span>' : ''}
+            <b>${esc(r.title)}</b>${isNow ? ' <span class="badge ok">Ahora</span>' : ''}${r.changed_at && Date.now() - new Date(r.changed_at) < 86400000 ? ' <span class="badge pend">Cambió</span>' : ''}
             ${r.place ? `<div class="note"><i class="ti ti-map-pin"></i> ${esc(r.place)}</div>` : ''}
             ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}
             ${myCol && r[myCol] && r[myCol] !== '—' ? `<div class="badges"><span class="badge ${/^Dirigen|^Enseñan/.test(r[myCol]) ? 'pend' : ''}">Vos: ${esc(r[myCol])}</span></div>` : ''}
@@ -869,9 +1011,10 @@ function renderAgenda(main) {
     f.onsubmit = async (e) => {
       e.preventDefault();
       const t = (v) => (v ? v.replace(/^0(\d):/, '$1:') : null);
-      const row = { day: +$('#f-day', f).value, start_time: t($('#f-start', f).value), end_time: t($('#f-end', f).value), title: clean($('#f-title', f).value), place: clean($('#f-place', f).value) || null, note: clean($('#f-note', f).value) || null, updated_by: S.email, updated_at: new Date().toISOString() };
-      const q = ev ? sb.from('schedule').update(row).eq('id', ev.id).select().single() : sb.from('schedule').insert({ ...row, sort: 9999 }).select().single();
-      const { data, error } = await q;
+      const row = { day: +$('#f-day', f).value, start_time: t($('#f-start', f).value), end_time: t($('#f-end', f).value), title: clean($('#f-title', f).value), place: clean($('#f-place', f).value) || null, note: clean($('#f-note', f).value) || null, updated_by: S.email, updated_at: new Date().toISOString(), changed_at: new Date().toISOString() };
+      const send = (rw) => (ev ? sb.from('schedule').update(rw).eq('id', ev.id).select().single() : sb.from('schedule').insert({ ...rw, sort: 9999 }).select().single());
+      let { data, error } = await send(row);
+      if (error && /changed_at/.test(error.message)) { delete row.changed_at; ({ data, error } = await send(row)); } // por si falta el SQL 07
       if (error) return toast(errMsg(error));
       S.schedule = ev ? S.schedule.map((x) => (x.id === ev.id ? data : x)) : [...S.schedule, data];
       agendaState.day = data.day; $('#ev-form', main).innerHTML = ''; agendaState.editing = null;
@@ -999,6 +1142,199 @@ async function renderMap(main) {
   $('#places', main).onclick = (e) => { const b = e.target.closest('[data-go]'); if (!b) return; const p = S.places.find((x) => String(x.id) === b.dataset.go); map.setView([p.lat, p.lng], 19); $('#map', main).scrollIntoView({ behavior: 'smooth' }); };
   drawPlaces();
   setTimeout(() => map.invalidateSize(), 200);
+}
+
+/* ---------- Más: menú de secciones ---------- */
+const MORE = [
+  { id: 'recuentos', label: 'Recuentos', ico: 'clipboard-check', desc: 'Presentes en cada recuento', show: (r) => can.headcount(r) },
+  { id: 'incidentes', label: 'Incidentes', ico: 'alert-triangle', desc: 'Avisar un problema de salud, conducta o seguridad', show: () => true },
+  { id: 'directorio', label: 'Directorio', ico: 'address-book', desc: 'Quién es quién en el personal', show: () => true },
+  { id: 'mapa', label: 'Mapa', ico: 'map-2', desc: 'Lugares del colegio', show: () => true },
+  { id: 'obispos', label: 'Obispos', ico: 'mail', desc: 'Inscripciones por unidad', show: (r) => can.bishopMark(r) },
+  { id: 'recursos', label: 'Recursos', ico: 'books', desc: 'Manuales, videos, himnos y juegos', show: () => true },
+  { id: 'perfil', label: 'Mi perfil', ico: 'user-circle', desc: 'Tu nombre, teléfono y recordatorios', show: () => true }
+];
+function renderMore(main) {
+  const items = MORE.filter((m) => m.show(S.role));
+  if (UI.sub && items.some((m) => m.id === UI.sub)) {
+    const m = items.find((x) => x.id === UI.sub);
+    main.innerHTML = `<button class="linkbtn" id="back" style="margin:0 0 6px -6px"><i class="ti ti-arrow-left"></i> Más</button><div id="sub"></div>`;
+    $('#back', main).onclick = () => { UI.sub = null; saveUI(); render(); };
+    const sub = $('#sub', main);
+    if (S.offline && m.id !== 'mapa' && m.id !== 'perfil') { sub.innerHTML = '<div class="empty"><p>Esta sección necesita conexión.</p></div>'; return; }
+    return ({ recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile }[m.id])(sub);
+  }
+  main.innerHTML = `<h2 class="page">Más</h2><div class="tiles">${items.map((m) => `<button class="tile" data-sub="${m.id}"><i class="ti ti-${m.ico}"></i><b>${m.label}</b><span class="note">${m.desc}</span></button>`).join('')}</div>`;
+  main.querySelector('.tiles').onclick = (e) => { const b = e.target.closest('[data-sub]'); if (!b) return; UI.sub = b.dataset.sub; saveUI(); render(); window.scrollTo(0, 0); };
+}
+const dbMissing = (err) => err && /does not exist|schema cache|Could not find/i.test(err.message || '');
+const missingMsg = () => `<div class="empty"><div class="big"><i class="ti ti-database-off"></i></div><p>Esta sección todavía no está activada.${S.role === 'dueno' ? '<br>Falta ejecutar <b>07_funciones_completas.sql</b> en Supabase.' : ''}</p></div>`;
+const fmtWhen = (d) => new Date(d).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+
+/* Recuentos: el consejero carga presentes; coordinación y auxiliares ven todo en vivo. */
+async function renderHeadcounts(main) {
+  const seeAll = can.seeAllHeadcounts(S.role);
+  const today = todayDayNumber();
+  const counts = S.schedule.filter((r) => /recuento/i.test(r.title) && (today === null || r.day === today))
+    .sort((a, b) => (toMin(a.start_time) ?? 0) - (toMin(b.start_time) ?? 0));
+  let q = sb.from('headcounts').select('*').order('created_at', { ascending: false }).limit(300);
+  if (!seeAll) q = q.eq('created_by', S.email);
+  const { data, error } = await q;
+  if (dbMissing(error)) { main.innerHTML = missingMsg(); return; }
+  const list = data || [];
+  const lastExpected = localStorage.getItem('pfj-hc-expected') || '';
+  main.innerHTML = `<h2 class="page">Recuentos</h2>
+    <p class="sub">${today !== null ? `Recuentos de hoy (${esc(dayLabel(today))}).` : 'Cargá la fecha del Día 1 para ver los recuentos del día.'}</p>
+    <form id="hcf" class="panel ev-edit" style="padding:12px 16px">
+      <h3 style="margin:0">Cargar un recuento</h3>
+      <label>Momento<select class="input" id="hc-s">${counts.map((r) => `<option value="${r.id}">${esc(r.start_time || '')} · ${esc(r.title)}</option>`).join('')}<option value="">Otro</option></select></label>
+      <div class="ev-grid" style="grid-template-columns:1fr 1fr"><label>Presentes<input class="input" type="number" min="0" id="hc-p" required></label><label>Esperados<input class="input" type="number" min="0" id="hc-e" value="${esc(lastExpected)}"></label></div>
+      <label>Faltan (nombres, si hay)<input class="input" id="hc-m" maxlength="500" placeholder="Ej.: Ana Pérez (en enfermería)"></label>
+      <button class="btn btn-primary btn-sm" style="justify-self:start"><i class="ti ti-check"></i> Enviar recuento</button>
+    </form>
+    <div class="panel" style="padding:12px 16px"><h3 style="margin:0 0 10px">${seeAll ? 'Recuentos recibidos' : 'Mis recuentos'}</h3><div id="hcl"></div></div>`;
+  const byActivity = {};
+  list.forEach((h) => { const k = h.schedule_id ? 's' + h.schedule_id : 'l' + (h.label || 'Otro'); (byActivity[k] = byActivity[k] || []).push(h); });
+  $('#hcl', main).innerHTML = Object.keys(byActivity).length ? Object.entries(byActivity).map(([k, hs]) => {
+    const act = S.schedule.find((r) => 's' + r.id === k);
+    const sumP = hs.reduce((a, h) => a + h.present, 0), sumE = hs.reduce((a, h) => a + (h.expected || 0), 0);
+    return `<div class="row-item" style="display:block"><b>${esc(act ? `${dayLabel(act.day)} · ${act.start_time || ''} · ${act.title}` : (hs[0].label || 'Otro'))}</b>
+      ${seeAll ? `<div class="badges"><span class="badge ${sumE && sumP < sumE ? 'bad' : 'ok'}">${sumP}${sumE ? ' de ' + sumE : ''} presentes</span><span class="badge">${plural(hs.length, 'recuento', 'recuentos')}</span></div>` : ''}
+      <div class="note" style="margin-top:6px">${hs.map((h) => `${esc(h.created_by || '')}: <b>${h.present}${h.expected ? '/' + h.expected : ''}</b>${h.missing ? ' · faltan: ' + esc(h.missing) : ''} · ${fmtWhen(h.created_at)}`).join('<br>')}</div></div>`;
+  }).join('') : '<p class="note" style="margin:0">Todavía no hay recuentos.</p>';
+  $('#hcf', main).onsubmit = async (e) => {
+    e.preventDefault();
+    const sid = $('#hc-s', main).value, act = S.schedule.find((r) => String(r.id) === sid);
+    const row = { schedule_id: sid ? +sid : null, label: act ? null : 'Otro', present: +$('#hc-p', main).value, expected: $('#hc-e', main).value ? +$('#hc-e', main).value : null, missing: clean($('#hc-m', main).value) || null, created_by: S.email };
+    const { error: err } = await sb.from('headcounts').insert(row);
+    if (err) return toast(errMsg(err));
+    if (row.expected !== null) localStorage.setItem('pfj-hc-expected', row.expected);
+    toast('Recuento enviado'); renderHeadcounts(main);
+  };
+}
+
+/* Incidentes: cualquiera avisa; salud y coordinación los ven y los cierran. */
+const INC_KINDS = ['Salud', 'Conducta', 'Seguridad', 'Otro'];
+async function renderIncidents(main) {
+  const manage = can.health(S.role);
+  const { data, error } = await sb.from('incidents').select('*').order('created_at', { ascending: false }).limit(200);
+  if (dbMissing(error)) { main.innerHTML = missingMsg(); return; }
+  const list = data || [];
+  const names = [...new Set(S.people.map((p) => `${p.first} ${p.last}`))];
+  main.innerHTML = `<h2 class="page">Incidentes</h2>
+    <p class="sub">${manage ? 'Coordinación, bienestar y enfermería ven todos los incidentes y los cierran.' : 'Avisá un problema: lo ve coordinación, bienestar y enfermería al instante.'}</p>
+    <form id="incf" class="panel ev-edit" style="padding:12px 16px">
+      <h3 style="margin:0">Avisar un incidente</h3>
+      <div class="ev-grid" style="grid-template-columns:1fr auto"><label>Tipo<select class="input" id="i-k">${INC_KINDS.map((k) => `<option>${k}</option>`).join('')}</select></label><label style="align-self:end;display:flex;gap:6px;align-items:center;padding-bottom:10px"><input type="checkbox" id="i-u"> Urgente</label></div>
+      <label>Persona (opcional)<input class="input" id="i-p" list="inc-names" maxlength="80"></label><datalist id="inc-names">${names.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+      <label>Lugar (opcional)<input class="input" id="i-l" list="inc-places" maxlength="80"></label><datalist id="inc-places">${S.places.map((p) => `<option value="${esc(p.name)}">`).join('')}</datalist>
+      <label>Qué pasó<textarea class="input" id="i-d" rows="3" maxlength="1500" required></textarea></label>
+      <button class="btn btn-primary btn-sm" style="justify-self:start"><i class="ti ti-send"></i> Enviar aviso</button>
+    </form>
+    <div class="panel" style="padding:12px 16px"><h3 style="margin:0 0 10px">${manage ? 'Incidentes' : 'Mis avisos'}</h3><div class="list" id="incl"></div></div>`;
+  $('#incl', main).innerHTML = list.length ? list.map((i) => `<div class="row-item" style="display:block">
+      <div class="badges" style="margin:0 0 4px"><span class="badge ${i.status === 'Abierto' ? 'pend' : 'ok'}">${esc(i.status)}</span><span class="badge">${esc(i.kind)}</span>${i.urgent ? '<span class="badge bad">Urgente</span>' : ''}</div>
+      ${i.person ? `<b>${esc(i.person)}</b> · ` : ''}${i.place ? `<span class="note"><i class="ti ti-map-pin"></i> ${esc(i.place)}</span>` : ''}
+      <div style="margin:4px 0">${esc(i.description).replace(/\n/g, '<br>')}</div>
+      <div class="note">${fmtWhen(i.created_at)} · ${esc(i.created_by || '')}${i.closed_at ? ` · cerrado por ${esc(i.closed_by || '')}: ${esc(i.resolution || '')}` : ''}</div>
+      ${manage && i.status === 'Abierto' ? `<div class="form-inline" style="margin:8px 0 0"><input class="input" data-res="${i.id}" placeholder="Cómo se resolvió"><button class="btn btn-sm" data-close="${i.id}"><i class="ti ti-check"></i> Cerrar</button></div>` : ''}
+    </div>`).join('') : '<p class="note" style="margin:0">No hay incidentes registrados.</p>';
+  $('#incf', main).onsubmit = async (e) => {
+    e.preventDefault();
+    const row = { kind: $('#i-k', main).value, urgent: $('#i-u', main).checked, person: clean($('#i-p', main).value) || null, place: clean($('#i-l', main).value) || null, description: clean($('#i-d', main).value), created_by: S.email };
+    const { error: err } = await sb.from('incidents').insert(row);
+    if (err) return toast(errMsg(err));
+    toast('Aviso enviado a coordinación'); renderIncidents(main);
+  };
+  $('#incl', main).onclick = async (e) => {
+    const b = e.target.closest('[data-close]'); if (!b) return;
+    const res = clean(main.querySelector(`[data-res="${b.dataset.close}"]`).value);
+    const { error: err } = await sb.from('incidents').update({ status: 'Cerrado', resolution: res || null, closed_by: S.email, closed_at: new Date().toISOString() }).eq('id', b.dataset.close);
+    if (err) return toast(errMsg(err));
+    toast('Incidente cerrado'); renderIncidents(main);
+  };
+}
+
+/* Directorio del personal */
+async function renderDirectory(main) {
+  const { data, error } = await sb.rpc('get_directory');
+  if (dbMissing(error)) { main.innerHTML = missingMsg(); return; }
+  if (error) { main.innerHTML = `<div class="empty"><p>${esc(errMsg(error))}</p></div>`; return; }
+  const list = data || [];
+  main.innerHTML = `<h2 class="page">Directorio del personal</h2>
+    <p class="sub">${plural(list.length, 'persona', 'personas')}. Para aparecer con tu nombre y teléfono, completá «Mi perfil».</p>
+    <div class="toolbar"><input class="input" id="dq" type="search" placeholder="Buscar nombre o rol…"></div><div class="list" id="dl"></div>`;
+  const draw = () => {
+    const q = norm($('#dq', main).value);
+    $('#dl', main).innerHTML = list.filter((p) => !q || norm(`${p.name || ''} ${p.email} ${roleName(p.role)}`).includes(q)).map((p) => `<div class="row-item">
+      <div class="grow"><b>${esc(p.name || p.email)}</b><div class="note">${esc(roleName(p.role))}${p.name ? ' · ' + esc(p.email) : ''}${p.phone ? ' · ' + esc(p.phone) : ''}</div></div>
+      ${contactLinks(p.phone || '', p.email)}</div>`).join('') || '<p class="note">Sin resultados.</p>';
+  };
+  draw(); $('#dq', main).oninput = draw;
+}
+
+/* Recursos: enlaces útiles (los cargan la dueña y los coordinadores) */
+async function renderResources(main) {
+  const editor = can.editEvent(S.role);
+  const { data, error } = await sb.from('resources').select('*').order('category').order('title');
+  if (dbMissing(error)) { main.innerHTML = missingMsg(); return; }
+  const list = data || [];
+  const cats = [...new Set(list.map((r) => r.category || 'Otros'))];
+  main.innerHTML = `<h2 class="page">Recursos</h2><p class="sub">Enlaces a manuales oficiales, videos, himnos y juegos.</p>
+    ${editor ? `<form id="rf" class="panel ev-edit" style="padding:12px 16px"><h3 style="margin:0">Agregar un enlace</h3>
+      <label>Título<input class="input" id="r-t" maxlength="120" required></label>
+      <label>Enlace<input class="input" id="r-u" type="url" required placeholder="https://"></label>
+      <label>Categoría<input class="input" id="r-c" list="r-cats" maxlength="40" placeholder="Manuales, Videos, Himnos, Juegos…"></label><datalist id="r-cats">${['Manuales', 'Videos', 'Himnos', 'Juegos', ...cats].filter((v, i, a) => a.indexOf(v) === i).map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
+      <button class="btn btn-primary btn-sm" style="justify-self:start"><i class="ti ti-plus"></i> Agregar</button></form>` : ''}
+    ${cats.length ? cats.map((c) => `<div class="tipo-h"><i class="ti ti-folder"></i>${esc(c)}</div><div class="list">${list.filter((r) => (r.category || 'Otros') === c).map((r) => `<div class="row-item">
+      <i class="ti ti-link" style="font-size:20px;color:var(--accent)"></i><div class="grow"><a href="${esc(r.url)}" target="_blank" rel="noopener"><b>${esc(r.title)}</b></a></div>
+      ${editor ? `<button class="btn btn-sm btn-danger" data-delres="${r.id}" aria-label="Borrar enlace"><i class="ti ti-trash"></i></button>` : ''}</div>`).join('')}</div>`).join('') : '<div class="empty"><p>Todavía no hay recursos cargados.</p></div>'}`;
+  if (!editor) return;
+  $('#rf', main).onsubmit = async (e) => {
+    e.preventDefault();
+    const { error: err } = await sb.from('resources').insert({ title: clean($('#r-t', main).value), url: clean($('#r-u', main).value), category: clean($('#r-c', main).value) || null, created_by: S.email });
+    if (err) return toast(errMsg(err));
+    renderResources(main);
+  };
+  main.onclick = async (e) => {
+    const b = e.target.closest('[data-delres]'); if (!b || !confirm('¿Borrar este enlace?')) return;
+    const { error: err } = await sb.from('resources').delete().eq('id', b.dataset.delres);
+    if (err) return toast(errMsg(err));
+    renderResources(main);
+  };
+}
+
+/* Mi perfil: nombre, teléfono y recordatorios */
+async function renderProfile(main) {
+  let prof = {};
+  if (!S.offline) { const { data } = await sb.from('profiles').select('*').eq('email', S.email).maybeSingle(); prof = data || {}; }
+  const remOn = localStorage.getItem(REM_KEY) === '1';
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  main.innerHTML = `<h2 class="page">Mi perfil</h2><p class="sub">${esc(S.email)} · ${esc(roleName(S.role))}</p>
+    <form id="pff" class="panel ev-edit" style="padding:12px 16px">
+      <h3 style="margin:0">Mis datos para el directorio</h3>
+      <label>Nombre y apellido<input class="input" id="pf-n" maxlength="80" value="${esc(prof.name || '')}"></label>
+      <label>Teléfono / WhatsApp<input class="input" id="pf-t" maxlength="30" inputmode="tel" value="${esc(prof.phone || '')}" placeholder="Ej.: 381 555-1234"></label>
+      <button class="btn btn-primary btn-sm" style="justify-self:start" ${S.offline ? 'disabled' : ''}><i class="ti ti-device-floppy"></i> Guardar</button>
+    </form>
+    <div class="panel" style="padding:12px 16px">
+      <h3 style="margin:0 0 6px">Recordatorios</h3>
+      <p class="note" style="margin:0 0 10px">Te avisa 10 minutos antes de cada actividad${ROLE_COL[S.role] ? ' que te toca' : ''} y cuando llega un aviso nuevo. Funciona con la app abierta o en segundo plano.</p>
+      ${perm === 'unsupported' ? '<p class="note">Este navegador no permite notificaciones.</p>' : perm === 'denied' ? '<p class="note">Las notificaciones están bloqueadas: habilitalas en los ajustes del navegador para esta página.</p>'
+        : `<button class="btn btn-sm ${remOn ? '' : 'btn-primary'}" id="rem">${remOn ? '<i class="ti ti-bell-off"></i> Desactivar recordatorios' : '<i class="ti ti-bell-ringing"></i> Activar recordatorios'}</button>`}
+    </div>`;
+  $('#pff', main).onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from('profiles').upsert({ email: S.email, name: clean($('#pf-n', main).value) || null, phone: clean($('#pf-t', main).value) || null, updated_at: new Date().toISOString() });
+    toast(error ? (dbMissing(error) ? 'Falta activar el directorio (SQL 07).' : errMsg(error)) : 'Datos guardados');
+  };
+  if ($('#rem', main)) $('#rem', main).onclick = async () => {
+    if (remOn) { localStorage.setItem(REM_KEY, '0'); toast('Recordatorios desactivados'); return renderProfile(main); }
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') { toast('No se dio permiso para notificaciones'); return renderProfile(main); }
+    localStorage.setItem(REM_KEY, '1'); startReminders(); notify('Recordatorios activados', 'Te avisamos 10 minutos antes de cada actividad.');
+    renderProfile(main);
+  };
 }
 
 /* ---------- Accesos (solo la dueña) ---------- */

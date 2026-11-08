@@ -542,3 +542,8 @@ html[data-font="merriweather"] { --font: "Merriweather", Georgia, serif; }
 .toolbar.tb-end { justify-content: flex-end; }
 .dz-ics { display: flex; gap: 8px; margin-bottom: 4px; color: var(--accent); }
 .dz-ics .ti { font-size: 18px; }
+/* Pantalla de inicio (splash): azul con el logo, mientras carga la app */
+#splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: radial-gradient(circle at 50% 45%, #1B2C7A 0%, #14205C 45%, #0B1440 100%); }
+#splash img { width: min(46vw, 220px); border-radius: 50%; box-shadow: 0 0 60px rgba(56,189,248,.45); animation: splashPulse 1.6s ease-in-out infinite; }
+@keyframes splashPulse { 50% { box-shadow: 0 0 90px rgba(56,189,248,.7); transform: scale(1.03); } }
+#app:not(:empty) ~ #splash { opacity: 0; visibility: hidden; transition: opacity .35s, visibility .35s; }

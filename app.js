@@ -85,13 +85,14 @@ applyTheme();
 
 /* ---------- Diseño de la app (lo define la dueña desde el Probador de diseño y se guarda para todos) ---------- */
 const DESIGN_KEY = 'pfj-design2';
-const DESIGN_DEFAULT = { palette: 'institucional', icons: 'cuadro-solido', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans', navico: 'modernos' }; // elegido por Daiana el 8/11/2026
+const DESIGN_DEFAULT = { palette: 'institucional', icons: 'linea', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans', navico: 'rellenos' }; // elegido por Daiana el 8/11/2026
 // Juegos de dibujos para la barra de abajo (orden: inicio, agenda, consejeros, participantes, salud, más, obispos, mapa, accesos).
 const NAV_SETS = {
   clasicos: ['home', 'calendar-event', 'users', 'mood-kid', 'heartbeat', 'layout-grid', 'mail', 'map-2', 'settings'],
   modernos: ['smart-home', 'calendar-time', 'users-group', 'user-star', 'stethoscope', 'dots-circle-horizontal', 'mail-opened', 'map-pin', 'adjustments'],
   simples: ['home-2', 'calendar', 'user-shield', 'users', 'first-aid-kit', 'menu-2', 'send', 'map', 'settings-2'],
   tablero: ['layout-dashboard', 'clock-hour-4', 'id-badge-2', 'school', 'heart-plus', 'apps', 'mail-forward', 'compass', 'lock'],
+  rellenos: ['home-filled', 'calendar-filled', 'user-filled', 'mood-kid-filled', 'heart-filled', 'layout-grid-filled', 'mail-filled', 'map-pin-filled', 'settings-filled'],
   comunidad: ['building-community', 'calendar-star', 'user-check', 'mood-happy', 'heart-handshake', 'category', 'message-2', 'route', 'key']
 };
 const NAV_ORDER = ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas', 'obispos', 'mapa', 'accesos'];
@@ -165,10 +166,11 @@ const DESIGN_OPTS = {
     ['merriweather', 'Merriweather', 'Con serifa, estilo libro']] },
   navico: { title: 'Dibujos de la barra de abajo', opts: [
     ['clasicos', 'Clásicos', 'Los primeros'],
-    ['modernos', 'Modernos', 'Los elegidos'],
+    ['modernos', 'Modernos', 'Casa inteligente, estetoscopio'],
     ['simples', 'Simples', 'Trazos básicos y claros'],
     ['tablero', 'Tablero', 'Estilo panel de control'],
-    ['comunidad', 'Comunidad', 'Más cálidos y cercanos']] }
+    ['comunidad', 'Comunidad', 'Más cálidos y cercanos'],
+    ['rellenos', 'Rellenos', 'Sólidos, como la hoja de íconos (los elegidos)']] }
 };
 const FONT_URL = { nunito: 'Nunito:wght@400;600;700;800', poppins: 'Poppins:wght@400;500;600;700', inter: 'Inter:wght@400;500;600;700;800',
   roboto: 'Roboto:wght@400;500;700', montserrat: 'Montserrat:wght@400;500;600;700', lato: 'Lato:wght@400;700', opensans: 'Open+Sans:wght@400;600;700',
@@ -1166,7 +1168,7 @@ function renderAgenda(main) {
     const iRead = (id) => readBy(id).some((x) => x.email === S.email);
     const audienceLabel = (a) => (a && a.length ? 'Para: ' + a.map((r) => roleName(r)).join(', ') : 'Para todos');
     box.innerHTML = `<div class="panel" style="padding:12px 16px">
-      <h3 style="margin:0 0 10px"><i class="ti ti-speakerphone"></i> Avisos de la coordinación</h3>
+      <h3 style="margin:0 0 10px"><i class="ti ti-message-circle-filled"></i> Avisos de la coordinación</h3>
       ${editor ? `<form id="nf" style="display:grid;gap:8px;margin-bottom:12px">
         <textarea class="input" id="nt" rows="2" maxlength="1000" placeholder="Escribí un aviso" required></textarea>
         <details class="note"><summary>Para quién (si no elegís nada, va para todos)</summary>
@@ -1967,7 +1969,7 @@ async function renderAccess(main) {
     <p class="sub">Solo vos ves esta sección. Las personas piden acceso desde la pantalla de ingreso; vos elegís a quién aceptar y con qué rol.</p>
     <div class="callout">El <b>rol</b> define qué datos ve cada persona. Para <b>consejeros</b> elegí también la estaca: verán solo a los participantes de esa estaca. Los <b>obispos</b> ven a los jóvenes cuyo correo de obispo coincide con el suyo.</div>
     <div class="panel" style="padding:12px 16px" id="vp">
-      <h3 style="margin:0 0 6px"><i class="ti ti-bell-ringing"></i> Notificaciones push de los avisos</h3>
+      <h3 style="margin:0 0 6px"><i class="ti ti-bell-filled"></i> Notificaciones push de los avisos</h3>
       <p class="note" style="margin:0 0 8px">${S.vapid ? 'Ya hay claves creadas. Si perdiste la privada, creá claves nuevas y reemplazá las dos en Supabase → Edge Functions → Secrets.' : 'Tocá el botón para crear las claves de envío. Se hace una sola vez.'}</p>
       <button class="btn btn-sm ${S.vapid ? '' : 'btn-primary'}" id="vp-gen"><i class="ti ti-key"></i> ${S.vapid ? 'Crear claves nuevas' : 'Crear claves'}</button>
       <div id="vp-out"></div>

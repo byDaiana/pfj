@@ -2062,9 +2062,10 @@ async function renderAccess(main) {
   };
   if ($('#vp-gen', main)) $('#vp-gen', main).onclick = async () => {
     if (S.vapid && !confirm('¿Crear claves nuevas? Las anteriores dejan de servir y cada persona vuelve a quedar suscripta al abrir la app.')) return;
-    const { pub, priv } = await genVapid();
+    let pub, priv;
+    try { ({ pub, priv } = await genVapid()); } catch (e) { return toast('No se pudieron crear las claves en este navegador: ' + (e?.message || e) + '. Probá desde la computadora con Chrome.'); }
     const { error } = await sb.from('settings').upsert({ key: 'vapid_public', value: pub });
-    if (error) return toast(errMsg(error));
+    if (error) return toast('No se pudo guardar la clave pública: ' + errMsg(error));
     S.vapid = pub;
     $('#vp-gen', main).remove();
     $('#vp-out', main).innerHTML = `<div class="callout" style="margin-top:8px">Copiá estas dos claves en Supabase → Edge Functions → Secrets. <b>La privada se muestra una sola vez y no se guarda en ningún lado</b>: no la mandes por chat.</div>

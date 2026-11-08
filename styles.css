@@ -301,3 +301,20 @@ textarea.input { resize: vertical; }
 .rem-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
 .rem-row:first-of-type { border-top: 0; }
 .rem-row.soon { background: var(--warn-bg); margin: 0 -16px; padding: 10px 16px; }
+
+/* ---------- ficha de la compañía ---------- */
+.ficha-h { margin: 4px 0 14px; display: grid; gap: 2px; }
+.ficha-n { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ficha-photo { position: relative; padding: 0; overflow: hidden; }
+.ficha-photo img { display: block; width: 100%; max-height: 420px; object-fit: cover; }
+.ficha-ph { display: grid; place-items: center; gap: 6px; padding: 40px 16px; color: var(--muted); }
+.ficha-ph .ti { font-size: 40px; }
+.ficha-up { position: absolute; right: 12px; bottom: 12px; background: var(--card); }
+.ficha-f { margin-top: 12px; }
+.ficha-f .k { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+.ficha-verse { font-style: italic; line-height: 1.6; padding-left: 10px; border-left: 3px solid var(--accent-bg); }
+.goal { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.goal:first-child { border-top: 0; }
+.goal label { display: flex; gap: 10px; align-items: center; cursor: pointer; flex: 1; }
+.goal input { width: 18px; height: 18px; }
+.goal.done span { text-decoration: line-through; color: var(--muted); }

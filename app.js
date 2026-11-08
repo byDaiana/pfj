@@ -555,7 +555,7 @@ function renderShell(app) {
   $('#ref').onclick = () => refresh();
   if ($('#goreq')) $('#goreq').onclick = () => { UI.tab = 'accesos'; saveUI(); render(); };
   if ($('#acc')) $('#acc').onclick = () => { UI.tab = UI.tab === 'accesos' ? tabs[0] : 'accesos'; saveUI(); render(); window.scrollTo(0, 0); };
-  app.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { UI.tab = b.dataset.tab; UI.sub = null; saveUI(); render(); window.scrollTo(0, 0); }));
+  app.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { UI.tab = b.dataset.tab; UI.sub = null; coState.ficha = null; saveUI(); render(); window.scrollTo(0, 0); }));
   const main = $('#main');
   if (UI.tab === 'accesos') return renderAccess(main);
   if (UI.tab === 'agenda') return renderAgenda(main);
@@ -1296,7 +1296,7 @@ function renderMore(main) {
     return `<div class="menu-sec"><div class="menu-t">${esc(s.title)}</div><div class="menu">${vis.map((m) => `<button class="menu-i" data-sub="${m.id}">
       <span class="menu-ic"><i class="ti ti-${m.ico}"></i></span><span class="menu-tx"><b>${m.label}</b><span>${m.desc}</span></span><i class="ti ti-chevron-right menu-ch"></i></button>`).join('')}</div></div>`;
   }).join('');
-  main.onclick = (e) => { const b = e.target.closest('[data-sub]'); if (!b) return; UI.sub = b.dataset.sub; saveUI(); render(); window.scrollTo(0, 0); };
+  main.onclick = (e) => { const b = e.target.closest('[data-sub]'); if (!b) return; coState.ficha = null; UI.sub = b.dataset.sub; saveUI(); render(); window.scrollTo(0, 0); };
 }
 
 /* Pantalla de recordatorios: estado y todo lo que viene, hoy y mañana. */
@@ -1322,11 +1322,110 @@ const dbMissing = (err) => err && /does not exist|schema cache|Could not find/i.
 const missingMsg = () => `<div class="empty"><div class="big"><i class="ti ti-database-off"></i></div><p>Esta sección todavía no está activada.${S.role === 'dueno' ? '<br>Falta ejecutar <b>07_funciones_completas.sql</b> en Supabase.' : ''}</p></div>`;
 const fmtWhen = (d) => new Date(d).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 
+/* Ficha de la compañía: número, nombre, pasaje, verso cantado, metas, foto e integrantes. */
+const canEditFicha = (c) => can.editEvent(S.role) || (S.role === 'consejero' && (S.myCompanies || []).includes(c.id));
+async function shrinkImage(file, max = 1600) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  return new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.82));
+}
+async function renderFicha(main, cid) {
+  const c = S.companies.find((x) => x.id === cid);
+  if (!c) { coState.ficha = null; return renderCompanies(main); }
+  const editable = canEditFicha(c);
+  const [goalsRes, photoRes] = await Promise.all([
+    sb.from('company_goals').select('*').eq('company_id', cid).order('created_at'),
+    c.photo_path ? sb.storage.from('company-photos').createSignedUrl(c.photo_path, 3600) : Promise.resolve({ data: null })
+  ]);
+  if (dbMissing(goalsRes.error)) { main.innerHTML = missingMsg().replace('07_funciones_completas', '11_ficha_compania'); return; }
+  const goals = goalsRes.data || [];
+  const photo = photoRes.data?.signedUrl || null;
+  const ms = S.people.filter((p) => S.members[p.id] === cid);
+  const cons = ms.filter((p) => p.tipo === 'Consejero'), part = ms.filter((p) => p.tipo === 'Participante');
+  const done = goals.filter((g) => g.done).length;
+  main.innerHTML = `<button class="backbtn" id="fi-back"><i class="ti ti-chevron-left"></i> Compañías</button>
+    <div class="ficha-h"><span class="ficha-n">${c.number ? 'N.º ' + esc(String(c.number)) : 'Compañía'}</span><h2 class="page" style="margin:0">${esc(c.name)}</h2>
+      ${c.place ? `<span class="note"><i class="ti ti-map-pin"></i> ${esc(c.place)}</span>` : ''}</div>
+    <div class="panel ficha-photo">${photo ? `<img src="${esc(photo)}" alt="Foto de la compañía ${esc(c.name)}">` : '<div class="ficha-ph"><i class="ti ti-photo"></i><span>Todavía no hay foto de la compañía</span></div>'}
+      ${editable ? `<label class="btn btn-sm ficha-up"><i class="ti ti-camera"></i> ${photo ? 'Cambiar foto' : 'Subir foto'}<input type="file" id="fi-photo" accept="image/*" hidden></label>` : ''}</div>
+    <div class="panel" style="padding:12px 16px" id="fi-data">
+      <div style="display:flex;align-items:center;gap:8px"><h3 style="margin:0;flex:1"><i class="ti ti-id-badge-2"></i> Datos de la compañía</h3>${editable ? '<button class="btn btn-sm" id="fi-edit"><i class="ti ti-pencil"></i> Editar</button>' : ''}</div>
+      <div class="ficha-f"><div class="k">Pasaje de las Escrituras</div><div>${c.scripture ? esc(c.scripture).replace(/\n/g, '<br>') : '<span class="note">Sin cargar</span>'}</div></div>
+      <div class="ficha-f"><div class="k">Verso cantado</div><div class="ficha-verse">${c.verse ? esc(c.verse).replace(/\n/g, '<br>') : '<span class="note">Sin cargar</span>'}</div></div>
+    </div>
+    <div class="panel" style="padding:12px 16px">
+      <h3 style="margin:0 0 8px"><i class="ti ti-target"></i> Metas de la compañía <span class="note">· ${done} de ${goals.length} cumplidas</span></h3>
+      <div id="fi-goals">${goals.map((g) => `<div class="goal ${g.done ? 'done' : ''}"><label><input type="checkbox" data-goal="${g.id}" ${g.done ? 'checked' : ''} ${editable ? '' : 'disabled'}><span>${esc(g.body)}</span></label>${editable ? `<button class="linkbtn" data-delgoal="${g.id}" aria-label="Borrar meta"><i class="ti ti-x"></i></button>` : ''}</div>`).join('') || '<p class="note" style="margin:0">Todavía no hay metas.</p>'}</div>
+      ${editable ? '<form id="fi-gf" class="form-inline" style="margin:10px 0 0"><input class="input" id="fi-g" maxlength="300" placeholder="Nueva meta de la compañía" required><button class="btn btn-sm btn-primary"><i class="ti ti-plus"></i> Agregar</button></form>' : ''}
+    </div>
+    <div class="panel" style="padding:12px 16px">
+      <h3 style="margin:0 0 4px"><i class="ti ti-users-group"></i> Integrantes</h3>
+      <div class="tipo-h" style="margin-top:6px"><i class="ti ti-users"></i>Consejeros<span class="n">${cons.length}</span></div>${cons.map((p) => `<div class="co-m"><span>${esc(p.last)}, ${esc(p.first)}</span></div>`).join('') || '<div class="note">—</div>'}
+      <div class="tipo-h"><i class="ti ti-mood-kid"></i>Participantes<span class="n">${part.length}</span></div>${part.map((p) => `<div class="co-m"><span>${esc(p.last)}, ${esc(p.first)}</span></div>`).join('') || '<div class="note">—</div>'}
+    </div>`;
+  const reload = async () => { await loadCompanies(); renderFicha(main, cid); };
+  $('#fi-back', main).onclick = () => { coState.ficha = null; renderCompanies(main); window.scrollTo(0, 0); };
+  if (!editable) return;
+  const save = (patch) => sb.rpc('save_company_ficha', { cid, num: patch.number ?? c.number ?? null, nm: patch.name ?? c.name, scr: patch.scripture ?? c.scripture ?? null, vrs: patch.verse ?? c.verse ?? null, photo: patch.photo_path ?? null, plc: patch.place ?? c.place ?? null });
+  $('#fi-edit', main).onclick = () => {
+    $('#fi-data', main).innerHTML = `<form id="fi-f" class="ev-edit">
+      <h3 style="margin:0">Editar datos</h3>
+      <div class="ev-grid" style="grid-template-columns:90px 1fr"><label>Número<input class="input" type="number" min="1" id="f-num" value="${esc(c.number ?? '')}"></label><label>Nombre<input class="input" id="f-nm" maxlength="60" required value="${esc(c.name)}"></label></div>
+      <label>Punto de encuentro<input class="input" id="f-plc" maxlength="60" list="fi-places" value="${esc(c.place || '')}"></label><datalist id="fi-places">${S.places.map((p) => `<option value="${esc(p.name)}">`).join('')}</datalist>
+      <label>Pasaje de las Escrituras<textarea class="input" id="f-scr" rows="2" maxlength="300" placeholder="Ej.: Alma 37:6">${esc(c.scripture || '')}</textarea></label>
+      <label>Verso cantado<textarea class="input" id="f-vrs" rows="5" maxlength="2000">${esc(c.verse || '')}</textarea></label>
+      <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm"><i class="ti ti-device-floppy"></i> Guardar</button><button type="button" class="btn btn-sm" id="f-cancel">Cancelar</button></div></form>`;
+    $('#f-cancel', main).onclick = () => renderFicha(main, cid);
+    $('#fi-f', main).onsubmit = async (e) => {
+      e.preventDefault();
+      const n = $('#f-num', main).value;
+      const { error } = await save({ number: n ? +n : null, name: clean($('#f-nm', main).value), place: clean($('#f-plc', main).value) || null, scripture: $('#f-scr', main).value.trim() || null, verse: $('#f-vrs', main).value.trim() || null });
+      if (error) return toast(errMsg(error));
+      toast('Ficha guardada'); reload();
+    };
+  };
+  $('#fi-photo', main).onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    toast('Subiendo foto…');
+    try {
+      const blob = await shrinkImage(file);
+      const path = `c${cid}/foto-${Date.now()}.jpg`;
+      const up = await sb.storage.from('company-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+      if (up.error) throw up.error;
+      const { error } = await save({ photo_path: path });
+      if (error) throw error;
+      if (c.photo_path && c.photo_path !== path) sb.storage.from('company-photos').remove([c.photo_path]);
+      toast('Foto guardada'); reload();
+    } catch (err) { toast(errMsg(err)); }
+  };
+  $('#fi-gf', main).onsubmit = async (e) => {
+    e.preventDefault();
+    const { error } = await sb.from('company_goals').insert({ company_id: cid, body: clean($('#fi-g', main).value), created_by: S.email });
+    if (error) return toast(errMsg(error));
+    reload();
+  };
+  $('#fi-goals', main).onchange = async (e) => {
+    const cb = e.target.closest('[data-goal]'); if (!cb) return;
+    const { error } = await sb.from('company_goals').update({ done: cb.checked }).eq('id', cb.dataset.goal);
+    if (error) { cb.checked = !cb.checked; return toast(errMsg(error)); }
+    reload();
+  };
+  $('#fi-goals', main).onclick = async (e) => {
+    const b = e.target.closest('[data-delgoal]'); if (!b || !confirm('¿Borrar esta meta?')) return;
+    const { error } = await sb.from('company_goals').delete().eq('id', b.dataset.delgoal);
+    if (error) return toast(errMsg(error));
+    reload();
+  };
+}
+
 /* Compañías: los coordinadores arman los grupos rápido; el resto los ve. */
-const coState = { target: null, tipo: 'Participante', q: '', prov: '', onlyFree: true, sel: new Set() };
+const coState = { target: null, tipo: 'Participante', q: '', prov: '', onlyFree: true, sel: new Set(), ficha: null };
 async function renderCompanies(main) {
   const manage = can.editEvent(S.role);
   await loadCompanies();
+  if (coState.ficha) return renderFicha(main, coState.ficha);
   if (!S.companies.length && !manage) { main.innerHTML = '<h2 class="page">Compañías</h2><div class="empty"><p>Todavía no se armaron las compañías.</p></div>'; return; }
   const membersOf = (cid) => S.people.filter((p) => S.members[p.id] === cid);
   const mine = new Set(S.myCompanies || []);
@@ -1362,7 +1461,7 @@ async function renderCompanies(main) {
           ${c.place ? `<div class="note" style="margin-bottom:6px"><i class="ti ti-map-pin"></i> ${esc(c.place)}</div>` : ''}
           <div class="tipo-h" style="margin-top:0"><i class="ti ti-users"></i>Consejeros<span class="n">${cons.length}</span></div>${cons.map(row).join('') || '<div class="note">—</div>'}
           <div class="tipo-h"><i class="ti ti-mood-kid"></i>Participantes<span class="n">${part.length}</span></div>${part.map(row).join('') || '<div class="note">—</div>'}
-          ${manage ? `<div style="margin-top:10px;text-align:right"><button class="btn btn-sm btn-danger" data-delco="${c.id}"><i class="ti ti-trash"></i> Borrar compañía</button></div>` : ''}
+          <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-sm btn-primary" data-ficha="${c.id}"><i class="ti ti-id-badge-2"></i> Ver ficha</button>${manage ? `<button class="btn btn-sm btn-danger" data-delco="${c.id}"><i class="ti ti-trash"></i> Borrar compañía</button>` : ''}</div>
         </div></div></section>`;
     }).join('') : `<div class="empty"><p>${S.role === 'consejero' ? 'Todavía no te asignaron a una compañía.' : 'Todavía no hay compañías.'}</p></div>`;
   };
@@ -1421,6 +1520,8 @@ async function renderCompanies(main) {
     if (gh) { const sec = gh.parentElement; UI.open[sec.dataset.g] = sec.classList.contains('closed'); saveUI(); sec.classList.toggle('closed'); return; }
     const rm = e.target.closest('[data-rm]');
     if (rm) { const { error } = await sb.from('company_members').delete().eq('person_id', rm.dataset.rm); if (error) return toast(errMsg(error)); await loadCompanies(); drawList(); drawAssign(); return; }
+    const fi = e.target.closest('[data-ficha]');
+    if (fi) { coState.ficha = +fi.dataset.ficha; renderFicha(main, coState.ficha); window.scrollTo(0, 0); return; }
     const dc = e.target.closest('[data-delco]');
     if (dc) {
       if (!confirm(`¿Borrar la compañía «${companyName(+dc.dataset.delco)}»? Las personas quedan sin compañía.`)) return;

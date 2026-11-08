@@ -535,3 +535,10 @@ html[data-font="lato"] { --font: "Lato", system-ui, sans-serif; }
 html[data-font="opensans"] { --font: "Open Sans", system-ui, sans-serif; }
 html[data-font="quicksand"] { --font: "Quicksand", system-ui, sans-serif; }
 html[data-font="merriweather"] { --font: "Merriweather", Georgia, serif; }
+/* Exportar / Imprimir: botones de ícono, sobrios */
+.btn-ic { width: 42px; height: 42px; padding: 0; border-radius: 50%; color: var(--text); background: transparent; }
+.btn-ic .ti { font-size: 20px; }
+.btn-ic:hover { background: var(--hover); }
+.toolbar.tb-end { justify-content: flex-end; }
+.dz-ics { display: flex; gap: 8px; margin-bottom: 4px; color: var(--accent); }
+.dz-ics .ti { font-size: 18px; }

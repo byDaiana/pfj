@@ -83,7 +83,17 @@ applyTheme();
 
 /* ---------- Diseño de la app (lo define la dueña desde el Probador de diseño y se guarda para todos) ---------- */
 const DESIGN_KEY = 'pfj-design2';
-const DESIGN_DEFAULT = { palette: 'institucional', icons: 'cuadro-solido', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans' }; // elegido por Daiana el 8/11/2026
+const DESIGN_DEFAULT = { palette: 'institucional', icons: 'cuadro-solido', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans', navico: 'clasicos' }; // elegido por Daiana el 8/11/2026
+// Juegos de dibujos para la barra de abajo (orden: inicio, agenda, consejeros, participantes, salud, más, obispos, mapa, accesos).
+const NAV_SETS = {
+  clasicos: ['home', 'calendar-event', 'users', 'mood-kid', 'heartbeat', 'layout-grid', 'mail', 'map-2', 'settings'],
+  modernos: ['smart-home', 'calendar-time', 'users-group', 'user-star', 'stethoscope', 'dots-circle-horizontal', 'mail-opened', 'map-pin', 'adjustments'],
+  simples: ['home-2', 'calendar', 'user-shield', 'users', 'first-aid-kit', 'menu-2', 'send', 'map', 'settings-2'],
+  tablero: ['layout-dashboard', 'clock-hour-4', 'id-badge-2', 'school', 'heart-plus', 'apps', 'mail-forward', 'compass', 'lock'],
+  comunidad: ['building-community', 'calendar-star', 'user-check', 'mood-happy', 'heart-handshake', 'category', 'message-2', 'route', 'key']
+};
+const NAV_ORDER = ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas', 'obispos', 'mapa', 'accesos'];
+const tabIco = (t) => (NAV_SETS[document.documentElement.getAttribute('data-navico')] || NAV_SETS.clasicos)[NAV_ORDER.indexOf(t)] || 'circle';
 const DESIGN_OPTS = {
   palette: { title: 'Paleta de colores', opts: [
     ['institucional', 'Institucional', 'Azul marino (la original)', ['#1F3864', '#DCE5F5', '#F4F6FA']],
@@ -150,7 +160,13 @@ const DESIGN_OPTS = {
     ['lato', 'Lato', 'Cálida y legible'],
     ['opensans', 'Open Sans', 'Neutra y muy legible'],
     ['quicksand', 'Quicksand', 'Redonda y liviana'],
-    ['merriweather', 'Merriweather', 'Con serifa, estilo libro']] }
+    ['merriweather', 'Merriweather', 'Con serifa, estilo libro']] },
+  navico: { title: 'Dibujos de la barra de abajo', opts: [
+    ['clasicos', 'Clásicos', 'Los de ahora'],
+    ['modernos', 'Modernos', 'Casa inteligente, estetoscopio'],
+    ['simples', 'Simples', 'Trazos básicos y claros'],
+    ['tablero', 'Tablero', 'Estilo panel de control'],
+    ['comunidad', 'Comunidad', 'Más cálidos y cercanos']] }
 };
 const FONT_URL = { nunito: 'Nunito:wght@400;600;700;800', poppins: 'Poppins:wght@400;500;600;700', inter: 'Inter:wght@400;500;600;700;800',
   roboto: 'Roboto:wght@400;500;700', montserrat: 'Montserrat:wght@400;500;600;700', lato: 'Lato:wght@400;700', opensans: 'Open+Sans:wght@400;600;700',
@@ -636,7 +652,7 @@ function renderShell(app) {
       ${S.role === 'dueno' ? `<button id="acc" class="${UI.tab === 'accesos' ? 'on' : ''}" title="Accesos y ajustes" aria-label="Accesos y ajustes" style="position:relative"><i class="ti ti-settings"></i>${S.requests.length ? `<span class="dot" style="position:absolute;top:-4px;right:-4px">${S.requests.length}</span>` : ''}</button>` : ''}
       <button id="logout" title="Salir" aria-label="Salir"><i class="ti ti-logout"></i></button>
     </header>
-    <nav class="tabs">${tabs.map((t, i) => `<button data-tab="${t}" class="${UI.tab === t ? 'active' : ''}${i === Math.floor(tabs.length / 2) ? ' mid' : ''}" aria-label="${label(t)}" title="${label(t)}"><i class="ti ti-${t === 'salud' && S.role === 'cocina' ? 'tools-kitchen-2' : TAB_INFO[t].ico}"></i><span class="lbl">${label(t)}</span></button>`).join('')}</nav>
+    <nav class="tabs">${tabs.map((t, i) => `<button data-tab="${t}" class="${UI.tab === t ? 'active' : ''}${i === Math.floor(tabs.length / 2) ? ' mid' : ''}" aria-label="${label(t)}" title="${label(t)}"><i class="ti ti-${t === 'salud' && S.role === 'cocina' ? 'tools-kitchen-2' : tabIco(t)}"></i><span class="lbl">${label(t)}</span></button>`).join('')}</nav>
     ${S.role === 'dueno' && S.requests.length && UI.tab !== 'accesos' ? `<div class="reqbar">🔔 ${plural(S.requests.length, 'solicitud de acceso pendiente', 'solicitudes de acceso pendientes')} <button class="btn btn-sm" id="goreq">Revisar</button></div>` : ''}
     <main id="main"></main>`;
   $('#logout').onclick = logout;
@@ -715,7 +731,7 @@ function renderHomeInner(main) {
       }).join('')}</tbody>
       <tfoot><tr><td>Total</td><td>${C.length}</td><td>${mk(C, 'Sí')}</td><td>${mk(C, 'No')}</td><td>${C.length - mk(C, 'Sí') - mk(C, 'No')}</td><td>${P.length}</td><td>${all.length}</td></tr></tfoot></table>
     </div>
-    <div class="toolbar">${can.export(S.role) ? '<button class="btn" id="exp">⬇️ Exportar a Excel</button>' : ''}<button class="btn" id="prn">🖨️ Imprimir</button></div>`;
+    <div class="toolbar tb-end">${can.export(S.role) ? '<button class="btn btn-ic" id="exp" aria-label="Exportar a Excel" title="Exportar a Excel"><i class="ti ti-file-spreadsheet"></i></button>' : ''}<button class="btn btn-ic" id="prn" aria-label="Imprimir" title="Imprimir"><i class="ti ti-printer"></i></button></div>`;
   if ($('#exp')) $('#exp').onclick = exportExcel;
   $('#prn').onclick = () => window.print();
 }
@@ -905,7 +921,7 @@ function renderHealth(main) {
     ${owner ? '<div id="hl-pend"></div>' : ''}
     <div class="toolbar">
       <input class="input" id="hq" type="search" placeholder="Buscar nombre, alergia, medicamento, comida…" value="${esc(healthState.q)}">
-      <button class="btn" id="prn"><i class="ti ti-printer"></i> Imprimir</button>
+      <button class="btn btn-ic" id="prn" aria-label="Imprimir" title="Imprimir"><i class="ti ti-printer"></i></button>
     </div>
     ${filters.length > 1 ? `<div class="toolbar chips" id="hf">${filters.map(([k, l]) => `<button class="chip ${healthState.filter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('')}</div>` : ''}
     ${logger ? `<div class="panel" style="padding:12px 16px">
@@ -1379,7 +1395,7 @@ function renderDesign(main) {
     </div>
     ${Object.entries(DESIGN_OPTS).map(([k, g]) => `<div class="dz-sec"><div class="menu-t">${esc(g.title)}</div><div class="dz-opts">${g.opts.map(([v, label, desc, sw]) => `
       <button class="dz-opt ${designDraft[k] === v ? 'on' : ''}" data-k="${k}" data-v="${v}">
-        ${sw ? `<div class="dz-sw">${sw.map((c) => `<i style="background:${c}"></i>`).join('')}</div>` : ''}<b>${esc(label)}</b><span>${esc(desc)}</span></button>`).join('')}</div></div>`).join('')}
+        ${sw ? `<div class="dz-sw">${sw.map((c) => `<i style="background:${c}"></i>`).join('')}</div>` : ''}${k === 'navico' ? `<div class="dz-ics">${NAV_SETS[v].slice(0, 6).map((ic) => `<i class="ti ti-${ic}"></i>`).join('')}</div>` : ''}<b>${esc(label)}</b><span>${esc(desc)}</span></button>`).join('')}</div></div>`).join('')}
     <div class="dz-bar">
       <span class="note" style="flex:1">${changed ? 'Tenés cambios sin guardar.' : 'Así está guardado para todos.'}</span>
       <button class="btn btn-sm" id="dz-reset"><i class="ti ti-rotate"></i> Original</button>
@@ -1913,7 +1929,7 @@ async function renderAccess(main) {
       <p class="note" style="margin-top:0">${S.people.length ? `Hay <b>${S.people.length}</b> personas en la base de datos. Si cargás un Excel nuevo se actualizan; las marcas Sí / No se conservan para quienes sigan en la lista.` : 'Todavía no cargaste el Excel de inscripciones.'}</p>
       ${dropzone()}
       <div class="toolbar" style="margin-top:12px">
-        ${S.people.length ? '<button class="btn" id="exp">⬇️ Exportar a Excel</button>' : ''}
+        ${S.people.length ? '<button class="btn btn-ic" id="exp" aria-label="Exportar a Excel" title="Exportar a Excel"><i class="ti ti-file-spreadsheet"></i></button>' : ''}
         <button class="btn btn-danger" id="wipe">Borrar todas las inscripciones</button>
       </div>
     </div>

@@ -40,6 +40,8 @@ const TABS_BY_ROLE = {
 const can = {
   // Agenda, avisos y mapa: solo la dueña y los coordinadores pueden modificarlos.
   editEvent: (r) => ['dueno', 'coordinador'].includes(r),
+  // Avisos: dueña, coordinadores y matrimonio director.
+  postNotice: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r),
   mark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero'].includes(r),
   bishopMark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
   export: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r)
@@ -780,6 +782,7 @@ function renderAgenda(main) {
 
   const drawNotices = () => {
     const box = $('#avisos', main);
+    const editor = can.postNotice(S.role); // los avisos tienen su propio permiso
     box.innerHTML = `<div class="panel" style="padding:12px 16px">
       <h3 style="margin:0 0 10px"><i class="ti ti-speakerphone"></i> Avisos de la coordinación</h3>
       ${editor ? `<form id="nf" style="display:grid;gap:8px;margin-bottom:12px">

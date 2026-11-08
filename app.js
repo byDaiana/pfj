@@ -1,4 +1,4 @@
-/* PFJ Coordinación — versión conectada a Supabase.
+﻿/* PFJ Coordinación — versión conectada a Supabase.
  * Ingreso con código por correo (Supabase Auth). Los datos y permisos viven en Supabase;
  * cada rol recibe del servidor solo lo que puede ver (ver supabase/schema.sql).
  */
@@ -892,7 +892,7 @@ function renderAgenda(main) {
     const file = e.target.files[0]; if (!file) return;
     try {
       const json = JSON.parse(await file.text());
-      const rows = (json.filas || json).map((r, i) => ({ day: +r.day, start_time: r.start_time || null, end_time: r.end_time || null, title: String(r.title || '').slice(0, 120), place: r.place || null, note: r.note || null, dress: r.dress || null, cons: r.cons || null, aux: r.aux || null, coord: r.coord || null, md: r.md || null, guide: r.guide || null, sort: r.sort ?? i + 1, updated_by: S.email }));
+      const rows = (json.filas || json).map((r, i) => ({ day: +r.day, start_time: r.start_time || null, end_time: r.end_time || null, title: String(r.title || '').slice(0, 200), place: r.place || null, note: r.note || null, dress: r.dress || null, cons: r.cons || null, aux: r.aux || null, coord: r.coord || null, md: r.md || null, guide: r.guide || null, sort: r.sort ?? i + 1, updated_by: S.email }));
       if (!rows.length || rows.some((r) => !r.title || Number.isNaN(r.day))) throw new Error('El archivo no tiene el formato esperado.');
       if (S.schedule.length && !confirm(`Se reemplazan las ${S.schedule.length} actividades actuales por ${rows.length} del archivo. ¿Continuar?`)) return;
       let r1 = await sb.from('schedule').delete().gte('id', 0); if (r1.error) throw r1.error;

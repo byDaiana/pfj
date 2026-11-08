@@ -787,11 +787,16 @@ function renderList(main, tipo) {
     const gh = e.target.closest('.group-h');
     if (gh) { const sec = gh.parentElement; UI.open[sec.dataset.g] = sec.classList.contains('closed'); saveUI(); sec.classList.toggle('closed'); return; }
     const row = e.target.closest('.card-row');
-    if (row) { const card = row.parentElement; const d = card.querySelector(':scope > .pd, :scope > .details'); if (d) d.remove(); else card.insertAdjacentHTML('beforeend', personDetails(S.people.find((p) => p.id === card.dataset.id))); }
+    if (row && row.parentElement.dataset.id) { const card = row.parentElement; const d = card.querySelector(':scope > .pd, :scope > .details'); if (d) d.remove(); else card.insertAdjacentHTML('beforeend', personDetails(S.people.find((p) => p.id === card.dataset.id))); }
   };
 }
 
 function personCard(p, markable) {
+  // Coordinador/a auxiliar: de los consejeros solo el nombre y, a la derecha, llamar y WhatsApp.
+  if (S.role === 'coord_auxiliar' && p.tipo === 'Consejero') {
+    const t = telLink(p.phone), w = waLink(p.phone);
+    return `<article class="card"><div class="card-row hc-line"><div class="name">${esc(p.last)}, ${esc(p.first)}</div><div class="actions">${t ? `<a class="cl" href="${t}" aria-label="Llamar" title="Llamar"><i class="ti ti-phone"></i></a>` : ''}${w ? `<a class="cl" href="${w}" target="_blank" rel="noopener" aria-label="WhatsApp" title="WhatsApp"><i class="ti ti-brand-whatsapp"></i></a>` : ''}</div></div></article>`;
+  }
   const badges = [estadoBadge(p.estado)];
   if (p.med_flag) badges.push('<span class="badge alert">Médico</span>');
   if (p.food_flag) badges.push('<span class="badge alert">Dieta</span>');

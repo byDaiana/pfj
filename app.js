@@ -770,7 +770,7 @@ function personDetails(p) {
   out.push(p.tipo === 'Consejero' ? f('Capacitación de protección', p.training, p.training === 'No') : f('Miembro de la Iglesia', p.member));
   out.push(f('Fecha de nacimiento', p.birth), f('Compromiso de salida', p.commit), f('Inscripción', p.reg), f('Observaciones', p.obs, true));
   const body = out.filter(Boolean).join('');
-  return `<div class="details">${body || '<div class="note">Tu rol no tiene más datos para ver de esta persona.</div>'}</div>`;
+  return `<div class="details boxes">${body || '<div class="note">Tu rol no tiene más datos para ver de esta persona.</div>'}</div>`;
 }
 
 /* ---------- Obispos ---------- */

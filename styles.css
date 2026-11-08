@@ -387,3 +387,9 @@ html[data-cards="vidrio"] .card, html[data-cards="vidrio"] .panel, html[data-car
 html[data-nav="flotante"] main, html[data-nav="centro"] main { padding-bottom: 130px; }
 html[data-nav="flotante"] .dz-bar { bottom: 100px; }
 html[data-nav="centro"] .dz-bar { bottom: 96px; }
+
+/* ---------- ficha desplegable de la persona: cada dato en su cuadro ---------- */
+.details.boxes { gap: 8px; background: transparent; }
+.details.boxes > div { background: color-mix(in srgb, var(--accent-bg) 55%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent-bg) 80%, var(--line)); border-radius: 10px; padding: 10px 12px; min-width: 0; overflow-wrap: anywhere; }
+.details.boxes .k { margin-bottom: 4px; }
+.details.boxes .hl { background: var(--alert-bg); }

@@ -26,17 +26,19 @@ const ROLES = {
 };
 const roleName = (r) => (r === 'dueno' ? 'Dueña' : ROLES[r] || r);
 const TABS_BY_ROLE = {
-  dueno: ['inicio', 'consejeros', 'participantes', 'obispos', 'salud', 'accesos'],
-  coordinador: ['inicio', 'consejeros', 'participantes', 'obispos', 'salud'],
-  matrimonio_director: ['inicio', 'consejeros', 'participantes', 'obispos', 'salud'],
-  coord_auxiliar: ['inicio', 'consejeros', 'participantes', 'obispos'],
-  coord_bienestar: ['inicio', 'consejeros', 'participantes', 'salud'],
-  consejero: ['participantes'],
+  // «Accesos» ya no es una pestaña: es el botón de engranaje de arriba (solo la dueña).
+  dueno: ['inicio', 'agenda', 'consejeros', 'participantes', 'obispos', 'salud', 'mapa'],
+  coordinador: ['inicio', 'agenda', 'consejeros', 'participantes', 'obispos', 'salud', 'mapa'],
+  matrimonio_director: ['inicio', 'agenda', 'consejeros', 'participantes', 'obispos', 'salud', 'mapa'],
+  coord_auxiliar: ['inicio', 'agenda', 'consejeros', 'participantes', 'obispos', 'mapa'],
+  coord_bienestar: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mapa'],
+  consejero: ['agenda', 'participantes', 'mapa'],
   obispo: ['consejeros', 'participantes'],
-  enfermeria: ['salud', 'consejeros', 'participantes'],
-  cocina: ['salud']
+  enfermeria: ['agenda', 'salud', 'consejeros', 'participantes', 'mapa'],
+  cocina: ['agenda', 'salud', 'mapa']
 };
 const can = {
+  editEvent: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
   mark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero'].includes(r),
   bishopMark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
   export: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r)
@@ -47,6 +49,7 @@ const S = {
   email: null, role: null, stake: null,
   people: [], bishopMarks: {}, markLabel: 'Confirmado',
   users: [], requests: [],
+  schedule: [], notices: [], places: [], day1: null, extrasOk: true,
   loading: false
 };
 const UI_KEY = 'pfj-ui-v2'; // solo preferencias de pantalla (pestaña, grupos abiertos); nada personal
@@ -174,7 +177,7 @@ async function importFile(file) {
 
 function exportExcel() {
   const rows = (tipo) => sorted(S.people.filter((p) => p.tipo === tipo)).map((p) => ({
-    [S.markLabel]: p.mark || '', Provincia: p.prov, Apellido: p.last, Nombre: p.first, 'Barrio / Rama': p.ward,
+    ...(tipo === 'Consejero' ? { [S.markLabel]: p.mark || '' } : {}), Provincia: p.prov, Apellido: p.last, Nombre: p.first, 'Barrio / Rama': p.ward,
     'Estaca / Distrito': p.stake, Estado: p.estado, Edad: p.age, Teléfono: p.phone, Correo: p.email,
     ...(tipo === 'Consejero' ? { 'Capacitación de protección': p.training } : { 'Miembro de la Iglesia': p.member }),
     'Información médica': p.med, 'Información alimentaria': p.food, 'Contacto 1': p.c1n, 'Tel. contacto 1': p.c1t,
@@ -206,6 +209,15 @@ async function loadData() {
   S.people = (ppl.data || []).map((p) => ({ ...p, prov: p.prov || 'Sin datos', ward: p.ward || '', last: p.last || '', first: p.first || '' }));
   const lbl = (st.data || []).find((x) => x.key === 'mark_label');
   if (lbl) S.markLabel = lbl.value;
+  S.day1 = ((st.data || []).find((x) => x.key === 'session_day1') || {}).value || null;
+  // Agenda, avisos y mapa (si la base todavía no tiene esas tablas, la app sigue funcionando)
+  const [sc, no, pl] = await Promise.all([
+    sb.from('schedule').select('*').order('day').order('sort'),
+    sb.from('notices').select('*').order('created_at', { ascending: false }),
+    sb.from('places').select('*').order('name')
+  ]);
+  S.extrasOk = !sc.error && !no.error && !pl.error;
+  S.schedule = sc.data || []; S.notices = no.data || []; S.places = pl.data || [];
   if (can.bishopMark(S.role)) {
     const { data } = await sb.from('bishop_marks').select('bishop_key,value');
     S.bishopMarks = Object.fromEntries((data || []).map((x) => [x.bishop_key, x.value]));
@@ -418,12 +430,14 @@ const TAB_INFO = {
   participantes: { label: 'Participantes', ico: 'mood-kid' },
   obispos: { label: 'Obispos', ico: 'mail' },
   salud: { label: 'Salud', ico: 'heartbeat' },
-  accesos: { label: 'Accesos', ico: 'key' }
+  agenda: { label: 'Agenda', ico: 'calendar-event' },
+  mapa: { label: 'Mapa', ico: 'map-2' },
+  accesos: { label: 'Accesos', ico: 'settings' }
 };
 
 function renderShell(app) {
   const tabs = TABS_BY_ROLE[S.role] || [];
-  if (!tabs.includes(UI.tab)) UI.tab = tabs[0];
+  if (!tabs.includes(UI.tab) && !(UI.tab === 'accesos' && S.role === 'dueno')) UI.tab = tabs[0];
   const label = (t) => (t === 'salud' && S.role === 'cocina' ? 'Dietas' : TAB_INFO[t].label);
   app.innerHTML = `
     <header class="topbar">
@@ -432,18 +446,22 @@ function renderShell(app) {
       <div class="user"><span>${esc(roleName(S.role))}</span><b>${esc(S.email)}</b></div>
       <button id="theme" title="${isDark() ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}" aria-label="${isDark() ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}"><i class="ti ti-${isDark() ? 'sun' : 'moon'}"></i></button>
       <button id="ref" title="Actualizar datos" aria-label="Actualizar datos"><i class="ti ti-refresh"></i></button>
+      ${S.role === 'dueno' ? `<button id="acc" class="${UI.tab === 'accesos' ? 'on' : ''}" title="Accesos y ajustes" aria-label="Accesos y ajustes" style="position:relative"><i class="ti ti-settings"></i>${S.requests.length ? `<span class="dot" style="position:absolute;top:-4px;right:-4px">${S.requests.length}</span>` : ''}</button>` : ''}
       <button id="logout" title="Salir" aria-label="Salir"><i class="ti ti-logout"></i></button>
     </header>
-    <nav class="tabs">${tabs.map((t) => `<button data-tab="${t}" class="${UI.tab === t ? 'active' : ''}" aria-label="${label(t)}" title="${label(t)}"><i class="ti ti-${t === 'salud' && S.role === 'cocina' ? 'tools-kitchen-2' : TAB_INFO[t].ico}"></i><span class="lbl">${label(t)}</span>${t === 'accesos' && S.requests.length ? `<span class="dot">${S.requests.length}</span>` : ''}</button>`).join('')}</nav>
+    <nav class="tabs">${tabs.map((t) => `<button data-tab="${t}" class="${UI.tab === t ? 'active' : ''}" aria-label="${label(t)}" title="${label(t)}"><i class="ti ti-${t === 'salud' && S.role === 'cocina' ? 'tools-kitchen-2' : TAB_INFO[t].ico}"></i><span class="lbl">${label(t)}</span></button>`).join('')}</nav>
     ${S.role === 'dueno' && S.requests.length && UI.tab !== 'accesos' ? `<div class="reqbar">🔔 ${plural(S.requests.length, 'solicitud de acceso pendiente', 'solicitudes de acceso pendientes')} <button class="btn btn-sm" id="goreq">Revisar</button></div>` : ''}
     <main id="main"></main>`;
   $('#logout').onclick = logout;
   $('#theme').onclick = toggleTheme;
   $('#ref').onclick = () => refresh();
   if ($('#goreq')) $('#goreq').onclick = () => { UI.tab = 'accesos'; saveUI(); render(); };
+  if ($('#acc')) $('#acc').onclick = () => { UI.tab = UI.tab === 'accesos' ? tabs[0] : 'accesos'; saveUI(); render(); window.scrollTo(0, 0); };
   app.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { UI.tab = b.dataset.tab; saveUI(); render(); window.scrollTo(0, 0); }));
   const main = $('#main');
   if (UI.tab === 'accesos') return renderAccess(main);
+  if (UI.tab === 'agenda') return renderAgenda(main);
+  if (UI.tab === 'mapa') return renderMap(main);
   if (!S.people.length) return renderNoData(main);
   ({ inicio: renderHome, consejeros: (m) => renderList(m, 'Consejero'), participantes: (m) => renderList(m, 'Participante'), obispos: renderBishops, salud: renderHealth }[UI.tab])(main);
 }
@@ -490,19 +508,19 @@ function renderHome(main) {
     <p class="sub">Datos en línea · los cambios de todo el equipo se ven al actualizar (⟳)</p>
     <div class="stats">
       <div class="stat"><div class="k">Consejeros</div><div class="v">${C.length}</div><div class="d">${esc(S.markLabel)}: ${mk(C, 'Sí')} sí · ${mk(C, 'No')} no</div></div>
-      <div class="stat"><div class="k">Participantes</div><div class="v">${P.length}</div><div class="d">${esc(S.markLabel)}: ${mk(P, 'Sí')} sí · ${mk(P, 'No')} no</div></div>
+      <div class="stat"><div class="k">Participantes</div><div class="v">${P.length}</div><div class="d">inscriptos</div></div>
       ${showEstado ? `<div class="stat warn"><div class="k">Sin aprobar</div><div class="v">${pend}</div><div class="d">pendientes o en espera</div></div>` : ''}
       ${bishops.length ? `<div class="stat"><div class="k">Obispos avisados</div><div class="v">${bDone}/${bishops.length}</div><div class="d">con inscripciones sin aprobar</div></div>` : ''}
       ${C.some((p) => has(p.training)) ? `<div class="stat bad"><div class="k">Sin capacitación</div><div class="v">${noTraining}</div><div class="d">consejeros (protección)</div></div>` : ''}
       <div class="stat warn"><div class="k">Salud / dieta</div><div class="v">${health}</div><div class="d">personas a tener en cuenta</div></div>
     </div>
     <div class="panel"><h3>Por provincia</h3>
-      <table class="t"><thead><tr><th>Provincia</th><th>Consejeros</th><th>Participantes</th><th>Total</th><th>${esc(S.markLabel)} · Sí</th><th>${esc(S.markLabel)} · No</th><th>Sin responder</th></tr></thead>
+      <table class="t"><thead><tr><th>Provincia</th><th>Consejeros</th><th>Consejeros · ${esc(S.markLabel)} Sí</th><th>Consejeros · No</th><th>Consejeros · sin responder</th><th>Participantes</th><th>Total</th></tr></thead>
       <tbody>${provs.map((pr) => {
-        const l = all.filter((p) => p.prov === pr), y = mk(l, 'Sí'), n = mk(l, 'No');
-        return `<tr><td>${esc(pr)}</td><td>${l.filter((p) => p.tipo === 'Consejero').length}</td><td>${l.filter((p) => p.tipo === 'Participante').length}</td><td><b>${l.length}</b></td><td>${y}</td><td>${n}</td><td>${l.length - y - n}</td></tr>`;
+        const l = all.filter((p) => p.prov === pr), lc = l.filter((p) => p.tipo === 'Consejero'), y = mk(lc, 'Sí'), n = mk(lc, 'No');
+        return `<tr><td>${esc(pr)}</td><td>${lc.length}</td><td>${y}</td><td>${n}</td><td>${lc.length - y - n}</td><td>${l.length - lc.length}</td><td><b>${l.length}</b></td></tr>`;
       }).join('')}</tbody>
-      <tfoot><tr><td>Total</td><td>${C.length}</td><td>${P.length}</td><td>${all.length}</td><td>${mk(all, 'Sí')}</td><td>${mk(all, 'No')}</td><td>${all.length - mk(all, 'Sí') - mk(all, 'No')}</td></tr></tfoot></table>
+      <tfoot><tr><td>Total</td><td>${C.length}</td><td>${mk(C, 'Sí')}</td><td>${mk(C, 'No')}</td><td>${C.length - mk(C, 'Sí') - mk(C, 'No')}</td><td>${P.length}</td><td>${all.length}</td></tr></tfoot></table>
     </div>
     <div class="toolbar">${can.export(S.role) ? '<button class="btn" id="exp">⬇️ Exportar a Excel</button>' : ''}<button class="btn" id="prn">🖨️ Imprimir</button></div>`;
   if ($('#exp')) $('#exp').onclick = exportExcel;
@@ -513,7 +531,8 @@ function renderHome(main) {
 const listState = { q: '', filter: 'todos' };
 function renderList(main, tipo) {
   const plur = tipo === 'Consejero' ? 'Consejeros' : 'Participantes';
-  const markable = can.mark(S.role) && !(S.role === 'consejero' && tipo === 'Consejero');
+  // La casilla Sí / No es solo para los consejeros.
+  const markable = can.mark(S.role) && tipo === 'Consejero';
   const filters = [['todos', 'Todos']];
   if (markable) filters.push(['sin', 'Sin responder'], ['si', 'Sí'], ['no', 'No']);
   if (S.people.some((p) => has(p.estado))) filters.push(['pend', 'Sin aprobar']);
@@ -677,18 +696,304 @@ function byTipo(list, rowFn, wrapClass) {
 function renderHealth(main) {
   const kitchen = S.role === 'cocina';
   const list = sorted(S.people.filter((p) => (kitchen ? p.food_flag : p.med_flag || p.food_flag)));
+  const filters = kitchen ? [['todos', 'Todos']] : [['todos', 'Todos'], ['med', 'Médico'], ['food', 'Dieta']];
+  if (!filters.some(([k]) => k === healthState.filter)) healthState.filter = 'todos';
   main.innerHTML = `
     <h2 class="page">${kitchen ? 'Dietas especiales' : 'Salud y alimentación'}</h2>
     <p class="sub">${plural(list.length, 'persona', 'personas')} ${kitchen ? 'con indicaciones de alimentación.' : 'con información médica o alimentaria a tener en cuenta.'}</p>
-    <div class="toolbar"><button class="btn" id="prn"><i class="ti ti-printer"></i> Imprimir esta lista</button></div>
-    ${byTipo(list, (p) => `
+    <div class="toolbar">
+      <input class="input" id="hq" type="search" placeholder="Buscar nombre, alergia, medicamento, comida…" value="${esc(healthState.q)}">
+      <button class="btn" id="prn"><i class="ti ti-printer"></i> Imprimir</button>
+    </div>
+    ${filters.length > 1 ? `<div class="toolbar chips" id="hf">${filters.map(([k, l]) => `<button class="chip ${healthState.filter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('')}</div>` : ''}
+    <div id="hlist"></div>`;
+  const draw = () => {
+    const q = norm(healthState.q);
+    const l = list.filter((p) => (healthState.filter === 'med' ? p.med_flag : healthState.filter === 'food' ? p.food_flag : true))
+      .filter((p) => !q || norm(`${p.first} ${p.last} ${p.pref || ''} ${p.ward} ${p.prov} ${p.med_flag ? p.med : ''} ${p.food_flag ? p.food : ''}`).includes(q));
+    $('#hlist', main).innerHTML = byTipo(l, (p) => `
       <div class="card"><div class="details" style="border-top:0">
         <div><div class="k">${esc(p.prov)}</div><b>${esc(p.last)}, ${esc(p.first)}</b>${has(p.age) ? `<div class="note">${esc(p.age)} años · ${esc(p.ward || '')}</div>` : ''}</div>
         ${p.med_flag && has(p.med) ? `<div><div class="k">Médico</div><div class="hl">${esc(p.med)}</div></div>` : ''}
         ${p.food_flag && has(p.food) ? `<div><div class="k">Alimentación</div><div class="hl">${esc(p.food)}</div></div>` : ''}
         ${has(p.c1n) || has(p.c1t) ? `<div><div class="k">Emergencia</div>${esc(p.c1n || '')} · ${esc(p.c1t || '')}${contactLinks(p.c1t, '')}</div>` : ''}
-      </div></div>`, 'list') || '<div class="empty"><p>No hay personas para mostrar.</p></div>'}`;
+      </div></div>`, 'list') || `<div class="empty"><div class="big"><i class="ti ti-search"></i></div><p>No hay resultados${q ? ` para «${esc(healthState.q)}»` : ''}.</p></div>`;
+  };
+  draw();
+  $('#hq', main).oninput = (e) => { healthState.q = e.target.value; draw(); };
+  if ($('#hf', main)) $('#hf', main).onclick = (e) => { const b = e.target.closest('[data-f]'); if (!b) return; healthState.filter = b.dataset.f; main.querySelectorAll('#hf .chip').forEach((c) => c.classList.toggle('on', c === b)); draw(); };
   $('#prn').onclick = () => window.print();
+}
+const healthState = { q: '', filter: 'todos' };
+
+/* ---------- Agenda: avisos + cronograma ---------- */
+const ROLE_COL = { consejero: 'cons', coord_auxiliar: 'aux', coordinador: 'coord', matrimonio_director: 'md' };
+const COL_NAME = { cons: 'Consejeros', aux: 'Coord. auxiliares', coord: 'Coordinadores', md: 'Matrimonio director' };
+const agendaState = { day: null, mine: false, editing: null };
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+function dayDate(n) {
+  if (!S.day1) return null;
+  const d = new Date(S.day1 + 'T12:00:00'); d.setDate(d.getDate() + (n - 1)); return d;
+}
+function dayLabel(n) {
+  const d = dayDate(n);
+  return d ? `Día ${n} · ${DIAS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}` : `Día ${n}`;
+}
+const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; };
+function todayDayNumber() {
+  if (!S.day1) return null;
+  const d1 = new Date(S.day1 + 'T00:00:00'), now = new Date(); now.setHours(0, 0, 0, 0);
+  return Math.round((now - d1) / 86400000) + 1;
+}
+
+function renderAgenda(main) {
+  const editor = can.editEvent(S.role);
+  if (!S.extrasOk) {
+    main.innerHTML = `<div class="empty"><div class="big"><i class="ti ti-database-off"></i></div><p>La agenda todavía no está activada en la base de datos.${S.role === 'dueno' ? '<br>Falta ejecutar <b>04_agenda_avisos_mapa.sql</b> en Supabase.' : ''}</p></div>`;
+    return;
+  }
+  const days = [...new Set(S.schedule.map((r) => r.day))].sort((a, b) => a - b);
+  const today = todayDayNumber();
+  if (agendaState.day === null || (!days.includes(agendaState.day) && days.length)) agendaState.day = days.includes(today) ? today : (days.includes(1) ? 1 : days[0] ?? 1);
+  const myCol = ROLE_COL[S.role];
+  main.innerHTML = `
+    <h2 class="page">Agenda</h2>
+    <p class="sub">${S.day1 ? `La conferencia empieza el ${dayDate(1).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}.` : 'Todavía no se cargó la fecha del Día 1.'}</p>
+    <section id="avisos"></section>
+    <div class="panel" style="padding:12px 16px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <h3 style="margin:0;flex:1"><i class="ti ti-calendar-week"></i> Cronograma</h3>
+        ${myCol ? `<label class="chip ${agendaState.mine ? 'on' : ''}" id="mine" style="cursor:pointer"><i class="ti ti-user"></i> Solo lo mío</label>` : ''}
+        ${editor ? '<button class="btn btn-sm" id="add-ev"><i class="ti ti-plus"></i> Actividad</button>' : ''}
+      </div>
+      ${days.length ? `<div class="chips" id="days" style="margin-bottom:12px">${days.map((d) => `<button class="chip ${agendaState.day === d ? 'on' : ''}" data-d="${d}">${esc(dayLabel(d))}${d === today ? ' · hoy' : ''}</button>`).join('')}</div>` : ''}
+      <div id="ev-form"></div>
+      <div id="evs"></div>
+    </div>
+    ${S.role === 'dueno' ? `<div class="panel" style="padding:12px 16px">
+      <h3 style="margin:0 0 10px">Ajustes de la agenda</h3>
+      <form class="form-inline" id="d1f"><label class="note" style="align-self:center">Fecha del Día 1</label><input class="input" type="date" id="d1" value="${esc(S.day1 || '')}" style="flex:0 1 200px"><button class="btn">Guardar</button></form>
+      <p class="note" style="margin:6px 0 8px">Cargar o reemplazar el cronograma desde un archivo (por ejemplo <b>cronograma_recomendado.json</b>, en la carpeta <b>supabase</b> de tu computadora):</p>
+      <label class="btn btn-sm"><i class="ti ti-upload"></i> Elegir archivo<input type="file" id="sched-file" accept=".json" hidden></label>
+    </div>` : ''}`;
+
+  const drawNotices = () => {
+    const box = $('#avisos', main);
+    box.innerHTML = `<div class="panel" style="padding:12px 16px">
+      <h3 style="margin:0 0 10px"><i class="ti ti-speakerphone"></i> Avisos de la coordinación</h3>
+      ${editor ? `<form id="nf" style="display:grid;gap:8px;margin-bottom:12px">
+        <textarea class="input" id="nt" rows="2" maxlength="1000" placeholder="Escribí un aviso para todo el equipo" required></textarea>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ni"> Importante</label><span style="flex:1"></span><button class="btn btn-primary btn-sm"><i class="ti ti-send"></i> Publicar</button></div>
+      </form>` : ''}
+      <div class="list">${S.notices.length ? S.notices.map((n) => `<div class="row-item notice ${n.important ? 'imp' : ''}">
+        <div class="grow">${n.important ? '<span class="badge bad" style="margin-bottom:4px;display:inline-block">Importante</span><br>' : ''}${esc(n.body).replace(/\n/g, '<br>')}
+          <div class="note" style="margin-top:4px">${new Date(n.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}${n.created_by ? ' · ' + esc(n.created_by) : ''}</div></div>
+        ${editor ? `<button class="btn btn-sm btn-danger" data-delnotice="${n.id}" aria-label="Borrar aviso"><i class="ti ti-trash"></i></button>` : ''}</div>`).join('') : '<p class="note" style="margin:0">No hay avisos por ahora.</p>'}</div></div>`;
+    if (editor) {
+      $('#nf', box).onsubmit = async (e) => {
+        e.preventDefault();
+        const body = clean($('#nt', box).value); if (!body) return;
+        const { error } = await sb.from('notices').insert({ body, important: $('#ni', box).checked, created_by: S.email });
+        if (error) return toast(errMsg(error));
+        const { data } = await sb.from('notices').select('*').order('created_at', { ascending: false });
+        S.notices = data || []; drawNotices(); toast('Aviso publicado');
+      };
+      box.onclick = async (e) => {
+        const b = e.target.closest('[data-delnotice]'); if (!b) return;
+        if (!confirm('¿Borrar este aviso?')) return;
+        const { error } = await sb.from('notices').delete().eq('id', b.dataset.delnotice);
+        if (error) return toast(errMsg(error));
+        S.notices = S.notices.filter((n) => String(n.id) !== b.dataset.delnotice); drawNotices();
+      };
+    }
+  };
+
+  const evForm = (ev) => `<form id="evf" class="ev-edit">
+      <div class="ev-grid">
+        <label>Día<input class="input" type="number" min="0" max="9" id="f-day" value="${ev ? ev.day : agendaState.day}" required></label>
+        <label>Desde<input class="input" type="time" id="f-start" value="${esc((ev?.start_time || '').padStart(5, '0'))}"></label>
+        <label>Hasta<input class="input" type="time" id="f-end" value="${esc(ev?.end_time ? ev.end_time.padStart(5, '0') : '')}"></label>
+      </div>
+      <label>Actividad<input class="input" id="f-title" maxlength="120" required value="${esc(ev?.title || '')}"></label>
+      <label>Lugar<input class="input" id="f-place" maxlength="80" list="placelist" placeholder="Ej.: comedor, capilla, cancha" value="${esc(ev?.place || '')}"></label>
+      <datalist id="placelist">${S.places.map((p) => `<option value="${esc(p.name)}">`).join('')}</datalist>
+      <label>Nota<input class="input" id="f-note" maxlength="200" value="${esc(ev?.note || '')}"></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm"><i class="ti ti-device-floppy"></i> Guardar</button>
+        <button type="button" class="btn btn-sm" id="f-cancel">Cancelar</button>
+        ${ev ? '<span style="flex:1"></span><button type="button" class="btn btn-sm btn-danger" id="f-del"><i class="ti ti-trash"></i> Borrar</button>' : ''}
+      </div></form>`;
+
+  const drawEvents = () => {
+    const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+    let list = S.schedule.filter((r) => r.day === agendaState.day)
+      .sort((a, b) => (toMin(a.start_time) ?? -1) - (toMin(b.start_time) ?? -1) || a.sort - b.sort);
+    if (agendaState.mine && myCol) list = list.filter((r) => r[myCol] && r[myCol] !== '—');
+    const dress = list.find((r) => r.dress)?.dress;
+    $('#evs', main).innerHTML = (dress ? `<div class="note" style="margin-bottom:8px"><i class="ti ti-shirt"></i> Vestimenta del personal: <b>${esc(dress)}</b></div>` : '') +
+      (list.length ? `<div class="list">${list.map((r) => {
+        const s = toMin(r.start_time), e = toMin(r.end_time);
+        const isNow = agendaState.day === today && s !== null && nowMin >= s && nowMin < (e ?? s + 15);
+        const roles = Object.keys(COL_NAME).filter((k) => r[k] && r[k] !== '—');
+        return `<div class="row-item ev ${isNow ? 'now' : ''}" data-ev="${r.id}">
+          <div class="ev-time">${esc(r.start_time || '—')}${r.end_time ? `<br><span class="note">${esc(r.end_time)}</span>` : ''}</div>
+          <div class="grow">
+            <b>${esc(r.title)}</b>${isNow ? ' <span class="badge ok">Ahora</span>' : ''}
+            ${r.place ? `<div class="note"><i class="ti ti-map-pin"></i> ${esc(r.place)}</div>` : ''}
+            ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}
+            ${myCol && r[myCol] && r[myCol] !== '—' ? `<div class="badges"><span class="badge ${/^Dirigen|^Enseñan/.test(r[myCol]) ? 'pend' : ''}">Vos: ${esc(r[myCol])}</span></div>` : ''}
+            ${!myCol && roles.length ? `<details class="note"><summary>Quién participa</summary>${roles.map((k) => `${COL_NAME[k]}: ${esc(r[k])}`).join('<br>')}</details>` : ''}
+          </div>
+          ${editor ? `<button class="btn btn-sm" data-edit="${r.id}" aria-label="Editar actividad"><i class="ti ti-pencil"></i></button>` : ''}
+        </div>`;
+      }).join('')}</div>` : `<div class="empty" style="padding:24px"><p>${S.schedule.length ? 'No hay actividades para mostrar en este día.' : 'Todavía no hay actividades cargadas.'}</p></div>`);
+  };
+
+  const openForm = (ev) => {
+    agendaState.editing = ev ? ev.id : 'new';
+    $('#ev-form', main).innerHTML = evForm(ev);
+    const f = $('#evf', main);
+    f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('#f-cancel', f).onclick = () => { $('#ev-form', main).innerHTML = ''; agendaState.editing = null; };
+    if ($('#f-del', f)) $('#f-del', f).onclick = async () => {
+      if (!confirm('¿Borrar esta actividad del cronograma?')) return;
+      const { error } = await sb.from('schedule').delete().eq('id', ev.id);
+      if (error) return toast(errMsg(error));
+      S.schedule = S.schedule.filter((x) => x.id !== ev.id); $('#ev-form', main).innerHTML = ''; drawEvents(); toast('Actividad borrada');
+    };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const t = (v) => (v ? v.replace(/^0(\d):/, '$1:') : null);
+      const row = { day: +$('#f-day', f).value, start_time: t($('#f-start', f).value), end_time: t($('#f-end', f).value), title: clean($('#f-title', f).value), place: clean($('#f-place', f).value) || null, note: clean($('#f-note', f).value) || null, updated_by: S.email, updated_at: new Date().toISOString() };
+      const q = ev ? sb.from('schedule').update(row).eq('id', ev.id).select().single() : sb.from('schedule').insert({ ...row, sort: 9999 }).select().single();
+      const { data, error } = await q;
+      if (error) return toast(errMsg(error));
+      S.schedule = ev ? S.schedule.map((x) => (x.id === ev.id ? data : x)) : [...S.schedule, data];
+      agendaState.day = data.day; $('#ev-form', main).innerHTML = ''; agendaState.editing = null;
+      renderAgenda(main); toast('Guardado');
+    };
+  };
+
+  drawNotices(); drawEvents();
+  if ($('#days', main)) $('#days', main).onclick = (e) => { const b = e.target.closest('[data-d]'); if (!b) return; agendaState.day = +b.dataset.d; main.querySelectorAll('#days .chip').forEach((c) => c.classList.toggle('on', c === b)); drawEvents(); };
+  if ($('#mine', main)) $('#mine', main).onclick = () => { agendaState.mine = !agendaState.mine; $('#mine', main).classList.toggle('on', agendaState.mine); drawEvents(); };
+  if ($('#add-ev', main)) $('#add-ev', main).onclick = () => openForm(null);
+  $('#evs', main).onclick = (e) => { const b = e.target.closest('[data-edit]'); if (!b) return; openForm(S.schedule.find((x) => String(x.id) === b.dataset.edit)); };
+  if ($('#d1f', main)) $('#d1f', main).onsubmit = async (e) => {
+    e.preventDefault();
+    const v = $('#d1', main).value || null;
+    const { error } = await sb.from('settings').upsert({ key: 'session_day1', value: v });
+    if (error) return toast(errMsg(error));
+    S.day1 = v; agendaState.day = null; renderAgenda(main); toast('Fecha guardada');
+  };
+  if ($('#sched-file', main)) $('#sched-file', main).onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      const json = JSON.parse(await file.text());
+      const rows = (json.filas || json).map((r, i) => ({ day: +r.day, start_time: r.start_time || null, end_time: r.end_time || null, title: String(r.title || '').slice(0, 120), place: r.place || null, note: r.note || null, dress: r.dress || null, cons: r.cons || null, aux: r.aux || null, coord: r.coord || null, md: r.md || null, sort: r.sort ?? i + 1, updated_by: S.email }));
+      if (!rows.length || rows.some((r) => !r.title || Number.isNaN(r.day))) throw new Error('El archivo no tiene el formato esperado.');
+      if (S.schedule.length && !confirm(`Se reemplazan las ${S.schedule.length} actividades actuales por ${rows.length} del archivo. ¿Continuar?`)) return;
+      let r1 = await sb.from('schedule').delete().gte('id', 0); if (r1.error) throw r1.error;
+      r1 = await sb.from('schedule').insert(rows); if (r1.error) throw r1.error;
+      const { data } = await sb.from('schedule').select('*').order('day').order('sort');
+      S.schedule = data || []; agendaState.day = null; renderAgenda(main); toast(`Cronograma cargado: ${rows.length} actividades`);
+    } catch (err) { toast(errMsg(err)); }
+  };
+}
+
+/* ---------- Mapa del colegio (croquis) ---------- */
+const PLACE_KINDS = ['Comedor', 'Capilla / devocional', 'Dormitorio', 'Aula / clase', 'Gimnasio / salón', 'Cancha', 'Enfermería', 'Baños', 'Recepción / ingreso', 'Estacionamiento', 'Punto de encuentro', 'Otro'];
+const KIND_ICON = { 'Comedor': 'tools-kitchen-2', 'Capilla / devocional': 'building-church', 'Dormitorio': 'bed', 'Aula / clase': 'school', 'Gimnasio / salón': 'building-stadium', 'Cancha': 'ball-football', 'Enfermería': 'first-aid-kit', 'Baños': 'bath', 'Recepción / ingreso': 'door-enter', 'Estacionamiento': 'parking', 'Punto de encuentro': 'flag', 'Otro': 'map-pin' };
+let leafletReady = null;
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletReady) return leafletReady;
+  leafletReady = new Promise((res, rej) => {
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'; js.onload = res; js.onerror = rej; document.head.appendChild(js);
+  });
+  return leafletReady;
+}
+let mapGeo = null;
+async function renderMap(main) {
+  const editor = can.editEvent(S.role);
+  main.innerHTML = `
+    <h2 class="page">Mapa del lugar</h2>
+    <p class="sub">Colegio Santa Rosa · sede Yerba Buena (Av. Pte. Perón 1800, Tucumán).${editor ? ' Tocá un edificio o cualquier punto del mapa para marcar un lugar.' : ''}</p>
+    ${!S.extrasOk ? `<div class="callout warn">Los lugares marcados todavía no se pueden guardar.${S.role === 'dueno' ? ' Falta ejecutar <b>04_agenda_avisos_mapa.sql</b> en Supabase.' : ''}</div>` : ''}
+    <div id="map" class="map"></div>
+    <div id="place-form"></div>
+    <div class="panel" style="padding:12px 16px">
+      <h3 style="margin:0 0 10px"><i class="ti ti-map-pins"></i> Lugares marcados</h3>
+      <div class="list" id="places"></div>
+    </div>
+    <p class="note">Imagen satelital © Esri · contornos de edificios © colaboradores de OpenStreetMap.</p>`;
+  try {
+    await loadLeaflet();
+    if (!mapGeo) mapGeo = await fetch('mapa-colegio.json').then((r) => r.json());
+  } catch { $('#map', main).innerHTML = '<div class="empty"><p>No se pudo cargar el mapa. Revisá la conexión.</p></div>'; return; }
+  const map = L.map($('#map', main), { zoomControl: true }).setView(mapGeo.centro, 18);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 19, attribution: 'Imagen © Esri' }).addTo(map);
+  const colors = { predio: '#FFD966', edificio: '#8FB0E8', cancha: '#7FD69B', pileta: '#5DCAEB' };
+  const outlines = L.featureGroup().addTo(map);
+  mapGeo.features.forEach((f) => {
+    const poly = L.polygon(f.coords, { color: colors[f.kind] || '#fff', weight: f.kind === 'predio' ? 3 : 2, fillOpacity: f.kind === 'predio' ? 0 : 0.18, dashArray: f.kind === 'predio' ? '6 6' : null, interactive: f.kind !== 'predio' }).addTo(outlines);
+    if (f.kind !== 'predio') poly.on('click', (e) => { L.DomEvent.stopPropagation(e); if (editor) openPlaceForm(poly.getBounds().getCenter(), f.kind === 'cancha' ? 'Cancha' : f.kind === 'pileta' ? 'Otro' : ''); });
+  });
+  const predio = mapGeo.features.find((f) => f.kind === 'predio');
+  if (predio) map.fitBounds(L.polygon(predio.coords).getBounds(), { padding: [10, 10] });
+  const markers = L.layerGroup().addTo(map);
+  const drawPlaces = () => {
+    markers.clearLayers();
+    S.places.forEach((p) => {
+      const icon = L.divIcon({ className: 'pin', html: `<span class="pin-dot"><i class="ti ti-${KIND_ICON[p.kind] || 'map-pin'}"></i></span><span class="pin-lbl">${esc(p.name)}</span>`, iconSize: null, iconAnchor: [14, 14] });
+      L.marker([p.lat, p.lng], { icon, draggable: editor }).addTo(markers)
+        .on('click', () => { if (editor) openPlaceForm(L.latLng(p.lat, p.lng), p.kind, p); })
+        .on('dragend', async (e) => {
+          const ll = e.target.getLatLng();
+          const { error } = await sb.from('places').update({ lat: ll.lat, lng: ll.lng }).eq('id', p.id);
+          if (error) return toast(errMsg(error));
+          p.lat = ll.lat; p.lng = ll.lng; toast('Lugar movido');
+        });
+    });
+    $('#places', main).innerHTML = S.places.length ? S.places.map((p) => `<div class="row-item">
+        <i class="ti ti-${KIND_ICON[p.kind] || 'map-pin'}" style="font-size:20px;color:var(--accent)"></i>
+        <div class="grow"><b>${esc(p.name)}</b><div class="note">${esc(p.kind || '')}${p.note ? ' · ' + esc(p.note) : ''}</div></div>
+        <button class="btn btn-sm" data-go="${p.id}" aria-label="Ver en el mapa"><i class="ti ti-focus-2"></i></button></div>`).join('')
+      : `<p class="note" style="margin:0">${editor ? 'Todavía no marcaste lugares. Tocá un edificio del mapa para empezar.' : 'Todavía no hay lugares marcados.'}</p>`;
+  };
+  const openPlaceForm = (latlng, kind, p) => {
+    if (!S.extrasOk) return toast('Primero hay que activar el mapa en la base de datos (04_agenda_avisos_mapa.sql).');
+    const box = $('#place-form', main);
+    box.innerHTML = `<form id="pf" class="panel ev-edit" style="padding:12px 16px">
+      <h3 style="margin:0">${p ? 'Editar lugar' : 'Nuevo lugar'}</h3>
+      <label>Nombre<input class="input" id="p-name" maxlength="80" required value="${esc(p?.name || '')}" placeholder="Ej.: Comedor principal"></label>
+      <label>Tipo<select class="input" id="p-kind">${PLACE_KINDS.map((k) => `<option ${k === (p?.kind || kind) ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+      <label>Nota<input class="input" id="p-note" maxlength="200" value="${esc(p?.note || '')}" placeholder="Ej.: planta alta, entrada por el patio"></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm"><i class="ti ti-device-floppy"></i> Guardar</button><button type="button" class="btn btn-sm" id="p-cancel">Cancelar</button>${p ? '<span style="flex:1"></span><button type="button" class="btn btn-sm btn-danger" id="p-del"><i class="ti ti-trash"></i> Borrar</button>' : ''}</div>
+    </form>`;
+    const f = $('#pf', box); f.scrollIntoView({ behavior: 'smooth', block: 'center' }); $('#p-name', f).focus();
+    $('#p-cancel', f).onclick = () => { box.innerHTML = ''; };
+    if ($('#p-del', f)) $('#p-del', f).onclick = async () => {
+      if (!confirm(`¿Borrar «${p.name}» del mapa?`)) return;
+      const { error } = await sb.from('places').delete().eq('id', p.id);
+      if (error) return toast(errMsg(error));
+      S.places = S.places.filter((x) => x.id !== p.id); box.innerHTML = ''; drawPlaces();
+    };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const row = { name: clean($('#p-name', f).value), kind: $('#p-kind', f).value, note: clean($('#p-note', f).value) || null };
+      const q = p ? sb.from('places').update(row).eq('id', p.id).select().single() : sb.from('places').insert({ ...row, lat: latlng.lat, lng: latlng.lng, created_by: S.email }).select().single();
+      const { data, error } = await q;
+      if (error) return toast(errMsg(error));
+      S.places = p ? S.places.map((x) => (x.id === p.id ? data : x)) : [...S.places, data];
+      S.places.sort((a, b) => a.name.localeCompare(b.name)); box.innerHTML = ''; drawPlaces(); toast('Lugar guardado');
+    };
+  };
+  if (editor) map.on('click', (e) => openPlaceForm(e.latlng, ''));
+  $('#places', main).onclick = (e) => { const b = e.target.closest('[data-go]'); if (!b) return; const p = S.places.find((x) => String(x.id) === b.dataset.go); map.setView([p.lat, p.lng], 19); $('#map', main).scrollIntoView({ behavior: 'smooth' }); };
+  drawPlaces();
+  setTimeout(() => map.invalidateSize(), 200);
 }
 
 /* ---------- Accesos (solo la dueña) ---------- */

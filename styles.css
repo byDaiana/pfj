@@ -117,9 +117,9 @@ p.sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
 @media (max-width: 720px) {
   .tabs { position: fixed; bottom: 0; top: auto; left: 0; right: 0; border-top: 1px solid var(--line); border-bottom: 0; justify-content: space-around; padding: 8px 8px max(8px, env(safe-area-inset-bottom)); }
   .tabs { gap: 2px; justify-content: space-between; }
-  .tabs button { padding: 10px 9px; }
-  .tabs button.active { padding: 10px 12px; font-size: 13px; }
-  .tabs button.active .lbl { max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+  .tabs button { padding: 10px 8px; }
+  .tabs button.active { padding: 10px 11px; font-size: 13px; }
+  .tabs button.active .lbl { max-width: 78px; overflow: hidden; text-overflow: ellipsis; }
   .topbar .user span { display: none; }
   .topbar .user { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
 }
@@ -203,6 +203,23 @@ table.t tfoot td { background: var(--band); font-weight: 700; }
 .reqbar { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; background: var(--note-bg); border-bottom: 1px solid var(--note-line); padding: 8px 16px; font-size: 14px; font-weight: 600; }
 select.input { appearance: auto; }
 textarea.input { resize: vertical; }
+
+/* ---------- agenda ---------- */
+.ev { align-items: flex-start; flex-wrap: nowrap; }
+.ev-time { min-width: 48px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ev.now { outline: 2px solid var(--yes); }
+.ev details summary { cursor: pointer; margin-top: 4px; }
+.ev-edit { display: grid; gap: 10px; margin-bottom: 14px; }
+.ev-edit label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.ev-grid { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 8px; }
+.notice.imp { border-left: 4px solid var(--no); border-radius: 0 10px 10px 0; }
+.topbar button.on { background: rgba(255,255,255,.28); }
+
+/* ---------- mapa ---------- */
+.map { height: 62vh; min-height: 320px; border-radius: var(--radius); overflow: hidden; margin-bottom: 14px; box-shadow: var(--shadow); background: var(--card); z-index: 0; }
+.pin { background: none; border: 0; }
+.pin-dot { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--brand); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.5); font-size: 15px; }
+.pin-lbl { position: absolute; left: 32px; top: 4px; white-space: nowrap; background: rgba(0,0,0,.72); color: #fff; font-size: 12px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
 
 #toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%) translateY(20px); background: var(--toast); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; pointer-events: none; transition: all .2s; z-index: 50; max-width: calc(100% - 32px); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

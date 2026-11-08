@@ -773,7 +773,7 @@ function renderAgenda(main) {
     ${S.role === 'dueno' ? `<div class="panel" style="padding:12px 16px">
       <h3 style="margin:0 0 10px">Ajustes de la agenda</h3>
       <form class="form-inline" id="d1f"><label class="note" style="align-self:center">Fecha del Día 1</label><input class="input" type="date" id="d1" value="${esc(S.day1 || '')}" style="flex:0 1 200px"><button class="btn">Guardar</button></form>
-      <p class="note" style="margin:6px 0 8px">Cargar o reemplazar el cronograma desde un archivo (por ejemplo <b>cronograma_recomendado.json</b>, en la carpeta <b>supabase</b> de tu computadora):</p>
+      <p class="note" style="margin:6px 0 8px">Cargar o reemplazar el cronograma desde un archivo de la carpeta <b>supabase</b> de tu computadora: <b>cronograma_pfj2027.json</b> (horario real con indicaciones del Área) o <b>cronograma_recomendado.json</b> (el del manual):</p>
       <label class="btn btn-sm"><i class="ti ti-upload"></i> Elegir archivo<input type="file" id="sched-file" accept=".json" hidden></label>
     </div>` : ''}`;
 
@@ -841,6 +841,7 @@ function renderAgenda(main) {
             <b>${esc(r.title)}</b>${isNow ? ' <span class="badge ok">Ahora</span>' : ''}
             ${r.place ? `<div class="note"><i class="ti ti-map-pin"></i> ${esc(r.place)}</div>` : ''}
             ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}
+            ${r.guide ? `<details class="guide"><summary><i class="ti ti-info-circle"></i> Indicaciones</summary><div>${esc(r.guide).replace(/\n\n/g, '<hr>').replace(/\n/g, '<br>')}</div></details>` : ''}
             ${myCol && r[myCol] && r[myCol] !== '—' ? `<div class="badges"><span class="badge ${/^Dirigen|^Enseñan/.test(r[myCol]) ? 'pend' : ''}">Vos: ${esc(r[myCol])}</span></div>` : ''}
             ${!myCol && roles.length ? `<details class="note"><summary>Quién participa</summary>${roles.map((k) => `${COL_NAME[k]}: ${esc(r[k])}`).join('<br>')}</details>` : ''}
           </div>
@@ -890,7 +891,7 @@ function renderAgenda(main) {
     const file = e.target.files[0]; if (!file) return;
     try {
       const json = JSON.parse(await file.text());
-      const rows = (json.filas || json).map((r, i) => ({ day: +r.day, start_time: r.start_time || null, end_time: r.end_time || null, title: String(r.title || '').slice(0, 120), place: r.place || null, note: r.note || null, dress: r.dress || null, cons: r.cons || null, aux: r.aux || null, coord: r.coord || null, md: r.md || null, sort: r.sort ?? i + 1, updated_by: S.email }));
+      const rows = (json.filas || json).map((r, i) => ({ day: +r.day, start_time: r.start_time || null, end_time: r.end_time || null, title: String(r.title || '').slice(0, 120), place: r.place || null, note: r.note || null, dress: r.dress || null, cons: r.cons || null, aux: r.aux || null, coord: r.coord || null, md: r.md || null, guide: r.guide || null, sort: r.sort ?? i + 1, updated_by: S.email }));
       if (!rows.length || rows.some((r) => !r.title || Number.isNaN(r.day))) throw new Error('El archivo no tiene el formato esperado.');
       if (S.schedule.length && !confirm(`Se reemplazan las ${S.schedule.length} actividades actuales por ${rows.length} del archivo. ¿Continuar?`)) return;
       let r1 = await sb.from('schedule').delete().gte('id', 0); if (r1.error) throw r1.error;

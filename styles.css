@@ -209,6 +209,9 @@ textarea.input { resize: vertical; }
 .ev-time { min-width: 48px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
 .ev.now { outline: 2px solid var(--yes); }
 .ev details summary { cursor: pointer; margin-top: 4px; }
+.guide summary { color: var(--accent); font-size: 13px; font-weight: 700; }
+.guide > div { margin-top: 6px; padding: 10px 12px; background: var(--info-bg); border-left: 3px solid var(--info-line); font-size: 13.5px; line-height: 1.5; }
+.guide hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
 .ev-edit { display: grid; gap: 10px; margin-bottom: 14px; }
 .ev-edit label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .ev-grid { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 8px; }

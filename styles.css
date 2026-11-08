@@ -393,3 +393,18 @@ html[data-nav="centro"] .dz-bar { bottom: 96px; }
 .details.boxes > div { background: color-mix(in srgb, var(--accent-bg) 55%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent-bg) 80%, var(--line)); border-radius: 10px; padding: 10px 12px; min-width: 0; overflow-wrap: anywhere; }
 .details.boxes .k { margin-bottom: 4px; }
 .details.boxes .hl { background: var(--alert-bg); }
+
+/* ---------- ficha de la persona: cuadros + lista ---------- */
+.pd { border-top: 1px solid var(--line); }
+.pd > .details.boxes { border-top: 0; padding-bottom: 6px; }
+.dl { padding: 4px 14px 14px; display: grid; }
+.dl-row { display: grid; grid-template-columns: minmax(120px, 34%) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.dl-row:first-child { border-top: 0; }
+.dl-row .k { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding-top: 2px; }
+.dl-row .hl { background: var(--alert-bg); border-radius: 8px; padding: 4px 8px; }
+@media (max-width: 480px) { .dl-row { grid-template-columns: 1fr; gap: 2px; } }
+/* botones de contacto: minimalistas, sin color */
+.cl { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--text); text-decoration: none; }
+.cl .ti { font-size: 18px; }
+.cl:hover { background: var(--hover); }
+.actions { gap: 8px; margin-top: 8px; }

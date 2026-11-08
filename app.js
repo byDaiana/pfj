@@ -724,11 +724,11 @@ function renderList(main, tipo) {
       if (error) { p.mark = prev; draw(); toast(errMsg(error)); }
       return;
     }
-    if (e.target.closest('a, .details')) return;
+    if (e.target.closest('a, .details, .pd')) return;
     const gh = e.target.closest('.group-h');
     if (gh) { const sec = gh.parentElement; UI.open[sec.dataset.g] = sec.classList.contains('closed'); saveUI(); sec.classList.toggle('closed'); return; }
     const row = e.target.closest('.card-row');
-    if (row) { const card = row.parentElement; const d = $('.details', card); if (d) d.remove(); else card.insertAdjacentHTML('beforeend', personDetails(S.people.find((p) => p.id === card.dataset.id))); }
+    if (row) { const card = row.parentElement; const d = card.querySelector(':scope > .pd, :scope > .details'); if (d) d.remove(); else card.insertAdjacentHTML('beforeend', personDetails(S.people.find((p) => p.id === card.dataset.id))); }
   };
 }
 
@@ -753,26 +753,30 @@ function personCard(p, markable) {
 function contactLinks(phone, email) {
   const a = [];
   const t = telLink(phone), w = waLink(phone);
-  if (t) a.push(`<a class="btn btn-sm" href="${t}">📞 Llamar</a>`);
-  if (w) a.push(`<a class="btn btn-sm" href="${w}" target="_blank" rel="noopener">💬 WhatsApp</a>`);
-  if (email) a.push(`<a class="btn btn-sm" href="mailto:${esc(email)}">✉️ Correo</a>`);
+  if (t) a.push(`<a class="cl" href="${t}" aria-label="Llamar" title="Llamar"><i class="ti ti-phone"></i></a>`);
+  if (w) a.push(`<a class="cl" href="${w}" target="_blank" rel="noopener" aria-label="WhatsApp" title="WhatsApp"><i class="ti ti-brand-whatsapp"></i></a>`);
+  if (email) a.push(`<a class="cl" href="mailto:${esc(email)}" aria-label="Correo" title="Correo"><i class="ti ti-mail"></i></a>`);
   return a.length ? `<div class="actions">${a.join('')}</div>` : '';
 }
 function personDetails(p) {
-  const f = (k, v, hl) => (has(v) ? `<div><div class="k">${k}</div><div class="${hl ? 'hl' : ''}">${esc(v)}</div></div>` : '');
-  const out = [];
-  if (has(p.phone) || has(p.email)) out.push(`<div><div class="k">Contacto personal del ${p.tipo === 'Consejero' ? 'consejero' : 'participante'}</div>${esc(p.phone || '')}<br>${esc(p.email || '')}${contactLinks(p.phone, p.email)}</div>`);
-  out.push(f('Nombre preferido', p.pref), f('Estaca / Distrito', p.stake));
-  if (has(p.bishop)) out.push(f('Obispo / Presidente', `${p.bishop}${p.bishop_e ? ' · ' + p.bishop_e : ''}`));
-  out.push(f('Información médica', p.med, p.med_flag), f('Información alimentaria', p.food, p.food_flag));
-  if (has(p.c1n) || has(p.c1t)) out.push(`<div><div class="k">Contacto de emergencia 1</div>${esc(p.c1n || '')}<br>${esc(p.c1t || '')}${contactLinks(p.c1t, p.c1e)}</div>`);
-  if (has(p.c2n) || has(p.c2t)) out.push(`<div><div class="k">Contacto de emergencia 2</div>${esc(p.c2n || '')}<br>${esc(p.c2t || '')}${contactLinks(p.c2t, p.c2e)}</div>`);
-  out.push(p.tipo === 'Consejero' ? f('Capacitación de protección', p.training, p.training === 'No') : f('Miembro de la Iglesia', p.member));
-  out.push(f('Fecha de nacimiento', p.birth), f('Compromiso de salida', p.commit), f('Inscripción', p.reg), f('Observaciones', p.obs, true));
-  const body = out.filter(Boolean).join('');
-  return `<div class="details boxes">${body || '<div class="note">Tu rol no tiene más datos para ver de esta persona.</div>'}</div>`;
+  // En cuadros: contacto personal, estaca y contactos de emergencia.
+  const boxes = [];
+  if (has(p.phone) || has(p.email)) boxes.push(`<div><div class="k">Contacto personal</div>${esc(p.phone || '')}${p.email ? '<br>' + esc(p.email) : ''}${contactLinks(p.phone, p.email)}</div>`);
+  if (has(p.stake)) boxes.push(`<div><div class="k">Estaca / Distrito</div>${esc(p.stake)}${p.ward ? `<br><span class="note">${esc(p.ward)}</span>` : ''}</div>`);
+  if (has(p.c1n) || has(p.c1t)) boxes.push(`<div><div class="k">Contacto de emergencia 1</div>${esc(p.c1n || '')}${p.c1t ? '<br>' + esc(p.c1t) : ''}${contactLinks(p.c1t, p.c1e)}</div>`);
+  if (has(p.c2n) || has(p.c2t)) boxes.push(`<div><div class="k">Contacto de emergencia 2</div>${esc(p.c2n || '')}${p.c2t ? '<br>' + esc(p.c2t) : ''}${contactLinks(p.c2t, p.c2e)}</div>`);
+  // En lista, fuera de los cuadros: información médica y alimentaria primero, y después el resto.
+  const li = (k, v, hl) => (has(v) ? `<div class="dl-row"><div class="k">${k}</div><div class="${hl ? 'hl' : ''}">${esc(v)}</div></div>` : '');
+  const list = [
+    li('Información médica', p.med, p.med_flag), li('Información alimentaria', p.food, p.food_flag),
+    li('Nombre preferido', p.pref),
+    has(p.bishop) ? li('Obispo / Presidente', `${p.bishop}${p.bishop_e ? ' · ' + p.bishop_e : ''}`) : '',
+    p.tipo === 'Consejero' ? li('Capacitación de protección', p.training, p.training === 'No') : li('Miembro de la Iglesia', p.member),
+    li('Fecha de nacimiento', p.birth), li('Compromiso de salida', p.commit), li('Inscripción', p.reg), li('Observaciones', p.obs, true)
+  ].filter(Boolean);
+  if (!boxes.length && !list.length) return '<div class="details"><div class="note">Tu rol no tiene más datos para ver de esta persona.</div></div>';
+  return `<div class="pd">${boxes.length ? `<div class="details boxes">${boxes.join('')}</div>` : ''}${list.length ? `<div class="dl">${list.join('')}</div>` : ''}</div>`;
 }
-
 /* ---------- Obispos ---------- */
 function bishopGroups() {
   const m = new Map();

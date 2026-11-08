@@ -83,7 +83,7 @@ applyTheme();
 
 /* ---------- Diseño de la app (lo define la dueña desde el Probador de diseño y se guarda para todos) ---------- */
 const DESIGN_KEY = 'pfj-design2';
-const DESIGN_DEFAULT = { palette: 'institucional', icons: 'cuadro-solido', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans', navico: 'clasicos' }; // elegido por Daiana el 8/11/2026
+const DESIGN_DEFAULT = { palette: 'institucional', icons: 'cuadro-solido', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans', navico: 'modernos' }; // elegido por Daiana el 8/11/2026
 // Juegos de dibujos para la barra de abajo (orden: inicio, agenda, consejeros, participantes, salud, más, obispos, mapa, accesos).
 const NAV_SETS = {
   clasicos: ['home', 'calendar-event', 'users', 'mood-kid', 'heartbeat', 'layout-grid', 'mail', 'map-2', 'settings'],
@@ -162,8 +162,8 @@ const DESIGN_OPTS = {
     ['quicksand', 'Quicksand', 'Redonda y liviana'],
     ['merriweather', 'Merriweather', 'Con serifa, estilo libro']] },
   navico: { title: 'Dibujos de la barra de abajo', opts: [
-    ['clasicos', 'Clásicos', 'Los de ahora'],
-    ['modernos', 'Modernos', 'Casa inteligente, estetoscopio'],
+    ['clasicos', 'Clásicos', 'Los primeros'],
+    ['modernos', 'Modernos', 'Los elegidos'],
     ['simples', 'Simples', 'Trazos básicos y claros'],
     ['tablero', 'Tablero', 'Estilo panel de control'],
     ['comunidad', 'Comunidad', 'Más cálidos y cercanos']] }

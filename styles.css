@@ -432,3 +432,14 @@ html[data-nav="centro"] .dz-bar { bottom: 96px; }
 .hc-row > span { color: var(--muted); font-size: 13px; }
 .hc-row .actions { margin-top: 6px; }
 .hc-log .btn { width: 100%; justify-content: center; }
+/* Salud: nombre y botones en la misma línea; información personal plegable */
+.hc-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hc-line .actions { margin-top: 0; flex-shrink: 0; }
+.hc-box .hc-line { padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.hc-box .hc-t + .hc-line { border-top: 0; }
+.hc-fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 4px; margin: 0; }
+.hc-fold > summary::-webkit-details-marker { display: none; }
+.hc-fold .hc-chev { margin-left: auto; transition: transform .2s; }
+.hc-fold[open] .hc-chev { transform: rotate(180deg); }
+.hc-fold[open] > summary { margin-bottom: 2px; }
+.hc-fold > summary + .hc-row { border-top: 0; }

@@ -891,18 +891,19 @@ function renderHealth(main) {
       .filter((p) => !q || norm(`${p.first} ${p.last} ${p.pref || ''} ${p.ward} ${p.prov} ${p.med_flag ? p.med : ''} ${p.food_flag ? p.food : ''}`).includes(q));
     // Tarjeta de salud: encabezado, indicaciones resaltadas y, debajo, cuadros apilados (personal arriba, emergencia abajo).
     const row = (k, v, extra = '') => (has(v) ? `<div class="hc-row"><span>${k}</span><div>${esc(v)}${extra}</div></div>` : '');
-    const emer = (n, t, e) => (has(n) || has(t) ? `<div class="hc-row"><span>${esc(n || 'Contacto')}</span><div>${esc(t || '')}${contactLinks(t, e)}</div></div>` : '');
+    // Contacto de emergencia: nombre a la izquierda y los botones a la derecha, en la misma línea (sin mostrar el número).
+    const emer = (n, t, e) => (has(n) || has(t) ? `<div class="hc-line"><b>${esc(n || 'Contacto')}</b>${contactLinks(t, e)}</div>` : '');
     $('#hlist', main).innerHTML = byTipo(sorted(l), (p) => {
       const sub = [has(p.age) ? `${p.age} años` : '', p.prov].filter(Boolean).map(esc).join(' · ');
       const info = [p.med_flag && has(p.med) ? `<div class="hc-alert"><div class="k"><i class="ti ti-first-aid-kit"></i> Médico</div>${esc(p.med)}</div>` : '',
         p.food_flag && has(p.food) ? `<div class="hc-alert"><div class="k"><i class="ti ti-tools-kitchen-2"></i> Alimentación</div>${esc(p.food)}</div>` : ''].join('');
-      const pers = [row('Estaca / Distrito', p.stake), row('Unidad', p.ward), row('Teléfono', p.phone, contactLinks(p.phone, p.email))].join('');
+      const pers = [row('Estaca / Distrito', p.stake), row('Unidad', p.ward)].join('');
       const em = [emer(p.c1n, p.c1t, p.c1e), emer(p.c2n, p.c2t, p.c2e)].join('');
       return `<div class="card hc">
-        <div class="hc-head"><b>${esc(p.last)}, ${esc(p.first)}</b>${sub ? `<div class="note">${sub}</div>` : ''}</div>
+        <div class="hc-line hc-head"><div><b>${esc(p.last)}, ${esc(p.first)}</b>${sub ? `<div class="note">${sub}</div>` : ''}</div>${contactLinks(p.phone, p.email)}</div>
         ${info ? `<div class="hc-info">${info}</div>` : ''}
-        ${pers ? `<div class="hc-box"><div class="hc-t"><i class="ti ti-user"></i> Información personal</div>${pers}</div>` : ''}
         ${em ? `<div class="hc-box"><div class="hc-t"><i class="ti ti-urgent"></i> Contacto de emergencia</div>${em}</div>` : ''}
+        ${pers ? `<details class="hc-box hc-fold"><summary class="hc-t"><i class="ti ti-user"></i> Información personal<i class="ti ti-chevron-down hc-chev"></i></summary>${pers}</details>` : ''}
         ${logger ? `<div class="hc-log"><button class="btn btn-sm" data-hl="${esc(p.id)}"><i class="ti ti-notes"></i> Registro de salud</button><div data-hlbox="${esc(p.id)}"></div></div>` : ''}
       </div>`;
     }, 'list') || `<div class="empty"><div class="big"><i class="ti ti-search"></i></div><p>No hay resultados${q ? ` para «${esc(healthState.q)}»` : ''}.</p></div>`;

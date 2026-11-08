@@ -1150,7 +1150,7 @@ function renderAgenda(main) {
         ${myCol ? `<label class="chip ${agendaState.mine ? 'on' : ''}" id="mine" style="cursor:pointer"><i class="ti ti-user"></i> Solo lo mío</label>` : ''}
         ${editor ? '<button class="btn btn-sm" id="add-ev"><i class="ti ti-plus"></i> Actividad</button>' : ''}
       </div>
-      ${days.length ? `<div class="chips" id="days" style="margin-bottom:12px">${days.map((d) => `<button class="chip ${agendaState.day === d ? 'on' : ''}" data-d="${d}">${esc(dayLabel(d))}${d === today ? ' · hoy' : ''}</button>`).join('')}</div>` : ''}
+      ${days.length ? `<label class="day-pick"><i class="ti ti-calendar-event"></i><select class="input" id="days" aria-label="Elegir el día">${days.map((d) => `<option value="${d}" ${agendaState.day === d ? 'selected' : ''}>${esc(dayLabel(d))}${d === today ? ' · hoy' : ''}</option>`).join('')}</select><i class="ti ti-chevron-down"></i></label>` : ''}
       <div id="ev-form"></div>
       <div id="evs"></div>
     </div>
@@ -1277,7 +1277,7 @@ function renderAgenda(main) {
   };
 
   drawNotices(); drawEvents();
-  if ($('#days', main)) $('#days', main).onclick = (e) => { const b = e.target.closest('[data-d]'); if (!b) return; agendaState.day = +b.dataset.d; main.querySelectorAll('#days .chip').forEach((c) => c.classList.toggle('on', c === b)); drawEvents(); };
+  if ($('#days', main)) $('#days', main).onchange = (e) => { agendaState.day = +e.target.value; drawEvents(); };
   if ($('#mine', main)) $('#mine', main).onclick = () => { agendaState.mine = !agendaState.mine; $('#mine', main).classList.toggle('on', agendaState.mine); drawEvents(); };
   if ($('#add-ev', main)) $('#add-ev', main).onclick = () => openForm(null);
   $('#evs', main).onclick = (e) => { const b = e.target.closest('[data-edit]'); if (!b) return; openForm(S.schedule.find((x) => String(x.id) === b.dataset.edit)); };

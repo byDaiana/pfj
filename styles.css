@@ -562,3 +562,9 @@ html[data-font="merriweather"] { --font: "Merriweather", Georgia, serif; }
 .att-row.on .att-av { background: var(--yes); color: #fff; }
 .att-row.on .att-st { background: var(--yes); color: #fff; }
 .att-row:focus-within { outline: 2px solid var(--brand-2); outline-offset: 1px; }
+/* Cronograma: elegir el día con un desplegable */
+.day-pick { position: relative; display: flex; align-items: center; margin-bottom: 12px; }
+.day-pick > .ti { position: absolute; pointer-events: none; color: var(--accent); font-size: 18px; }
+.day-pick > .ti:first-child { left: 12px; }
+.day-pick > .ti:last-child { right: 12px; color: var(--muted); }
+.day-pick select { appearance: none; -webkit-appearance: none; width: 100%; padding: 12px 40px 12px 40px; font-weight: 700; font-size: 15px; cursor: pointer; }

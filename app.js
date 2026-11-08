@@ -767,15 +767,17 @@ function personDetails(p) {
   if (has(p.c2n) || has(p.c2t)) boxes.push(`<div><div class="k">Contacto de emergencia 2</div>${esc(p.c2n || '')}${p.c2t ? '<br>' + esc(p.c2t) : ''}${contactLinks(p.c2t, p.c2e)}</div>`);
   // En lista, fuera de los cuadros: información médica y alimentaria primero, y después el resto.
   const li = (k, v, hl) => (has(v) ? `<div class="dl-row"><div class="k">${k}</div><div class="${hl ? 'hl' : ''}">${esc(v)}</div></div>` : '');
-  const list = [
-    li('Información médica', p.med, p.med_flag), li('Información alimentaria', p.food, p.food_flag),
+  const main = [li('Información médica', p.med, p.med_flag), li('Información alimentaria', p.food, p.food_flag)].filter(Boolean);
+  const more = [
     li('Nombre preferido', p.pref),
     has(p.bishop) ? li('Obispo / Presidente', `${p.bishop}${p.bishop_e ? ' · ' + p.bishop_e : ''}`) : '',
     p.tipo === 'Consejero' ? li('Capacitación de protección', p.training, p.training === 'No') : li('Miembro de la Iglesia', p.member),
     li('Fecha de nacimiento', p.birth), li('Compromiso de salida', p.commit), li('Inscripción', p.reg), li('Observaciones', p.obs, true)
   ].filter(Boolean);
-  if (!boxes.length && !list.length) return '<div class="details"><div class="note">Tu rol no tiene más datos para ver de esta persona.</div></div>';
-  return `<div class="pd">${boxes.length ? `<div class="details boxes">${boxes.join('')}</div>` : ''}${list.length ? `<div class="dl">${list.join('')}</div>` : ''}</div>`;
+  if (!boxes.length && !main.length && !more.length) return '<div class="details"><div class="note">Tu rol no tiene más datos para ver de esta persona.</div></div>';
+  // "Más": la información secundaria queda plegada debajo de la médica y la alimentaria.
+  const moreHtml = more.length ? `<details class="dl-more"><summary><span>Más</span><i class="ti ti-chevron-down"></i></summary>${more.join('')}</details>` : '';
+  return `<div class="pd">${boxes.length ? `<div class="details boxes">${boxes.join('')}</div>` : ''}${main.length || moreHtml ? `<div class="dl">${main.join('')}${moreHtml}</div>` : ''}</div>`;
 }
 /* ---------- Obispos ---------- */
 function bishopGroups() {

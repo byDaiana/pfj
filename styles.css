@@ -408,3 +408,13 @@ html[data-nav="centro"] .dz-bar { bottom: 96px; }
 .cl .ti { font-size: 18px; }
 .cl:hover { background: var(--hover); }
 .actions { gap: 8px; margin-top: 8px; }
+/* Ficha: cuadros centrados y "Más" desplegable */
+.details.boxes > div { text-align: center; }
+.details.boxes .actions { justify-content: center; }
+.dl-more { border-top: 1px solid var(--line); }
+.dl-more > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 0 4px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.dl-more > summary::-webkit-details-marker { display: none; }
+.dl-more > summary .ti { transition: transform .2s; }
+.dl-more[open] > summary .ti { transform: rotate(180deg); }
+.dl-more[open] > summary span::after { content: ' (ocultar)'; font-weight: 400; }
+.dl-more > .dl-row:first-of-type { border-top: 1px solid var(--line); }

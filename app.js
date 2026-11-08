@@ -31,7 +31,7 @@ const TABS_BY_ROLE = {
   dueno: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   coordinador: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   matrimonio_director: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
-  coord_auxiliar: ['inicio', 'agenda', 'consejeros', 'participantes', 'mas'],
+  coord_auxiliar: ['inicio', 'agenda', 'participantes', 'salud', 'mas'],
   coord_bienestar: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   consejero: ['agenda', 'participantes', 'salud', 'mas'],
   obispo: ['consejeros', 'participantes', 'mas'],
@@ -45,12 +45,14 @@ const can = {
   // Avisos: dueña, coordinadores y matrimonio director.
   postNotice: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r),
   health: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_bienestar', 'enfermeria']),
-  healthLog: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_bienestar', 'enfermeria', 'consejero']),  owner: (r) => r === 'dueno',
+  healthLog: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_bienestar', 'enfermeria', 'consejero', 'coord_auxiliar']),  owner: (r) => r === 'dueno',
   headcount: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero']),
   seeAllHeadcounts: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar']),
   directory: inRoles(['dueno', 'coordinador', 'matrimonio_director']),
   companies: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero', 'enfermeria']),
-  mark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero'].includes(r),
+  // Sí / No de consejeros: solo la dueña y los coordinadores (los demás no lo ven).
+  mark: (r) => ['dueno', 'coordinador'].includes(r),
+  seeCons: (r) => (TABS_BY_ROLE[r] || []).includes('consejeros'),
   bishopMark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
   export: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r)
 };
@@ -351,7 +353,7 @@ async function loadCompanies() {
   S.companies = c.error ? [] : c.data || [];
   S.members = Object.fromEntries((m.error ? [] : m.data || []).map((x) => [x.person_id, x.company_id]));
   S.myCompanies = [];
-  if (S.role === 'consejero') { const r = await sb.rpc('my_company_ids'); S.myCompanies = r.data || []; }
+  if (['consejero', 'coord_auxiliar'].includes(S.role)) { const r = await sb.rpc('my_company_ids'); S.myCompanies = r.data || []; }
 }
 const companyName = (id) => (S.companies.find((c) => c.id === id) || {}).name || '';
 async function loadAccess() {
@@ -712,11 +714,12 @@ function renderHomeInner(main) {
   const bishops = can.bishopMark(S.role) ? bishopGroups().filter((b) => b.pend > 0) : [];
   const bDone = bishops.filter((b) => S.bishopMarks[b.key] === 'Sí').length;
   const provs = PROVINCES.filter((pr) => all.some((p) => p.prov === pr));
+  const seeC = can.seeCons(S.role), yn = can.mark(S.role);
   main.innerHTML = `
     <h2 class="page">Resumen</h2>
     <p class="sub">Datos en línea · los cambios de todo el equipo se ven al actualizar (⟳)</p>
     <div class="stats">
-      <div class="stat"><div class="k">Consejeros</div><div class="v">${C.length}</div><div class="d">${esc(S.markLabel)}: ${mk(C, 'Sí')} sí · ${mk(C, 'No')} no</div></div>
+      ${seeC ? `<div class="stat"><div class="k">Consejeros</div><div class="v">${C.length}</div><div class="d">${yn ? `${esc(S.markLabel)}: ${mk(C, 'Sí')} sí · ${mk(C, 'No')} no` : 'inscriptos'}</div></div>` : ''}
       <div class="stat"><div class="k">Participantes</div><div class="v">${P.length}</div><div class="d">inscriptos</div></div>
       ${showEstado ? `<div class="stat warn"><div class="k">Sin aprobar</div><div class="v">${pend}</div><div class="d">pendientes o en espera</div></div>` : ''}
       ${bishops.length ? `<div class="stat"><div class="k">Obispos avisados</div><div class="v">${bDone}/${bishops.length}</div><div class="d">con inscripciones sin aprobar</div></div>` : ''}
@@ -724,12 +727,12 @@ function renderHomeInner(main) {
       <div class="stat warn"><div class="k">Salud / dieta</div><div class="v">${health}</div><div class="d">personas a tener en cuenta</div></div>
     </div>
     <div class="panel"><h3>Por provincia</h3>
-      <table class="t"><thead><tr><th>Provincia</th><th>Consejeros</th><th>Consejeros · ${esc(S.markLabel)} Sí</th><th>Consejeros · No</th><th>Consejeros · sin responder</th><th>Participantes</th><th>Total</th></tr></thead>
+      <table class="t"><thead><tr><th>Provincia</th>${seeC ? '<th>Consejeros</th>' : ''}${yn ? `<th>Consejeros · ${esc(S.markLabel)} Sí</th><th>Consejeros · No</th><th>Consejeros · sin responder</th>` : ''}<th>Participantes</th><th>Total</th></tr></thead>
       <tbody>${provs.map((pr) => {
         const l = all.filter((p) => p.prov === pr), lc = l.filter((p) => p.tipo === 'Consejero'), y = mk(lc, 'Sí'), n = mk(lc, 'No');
-        return `<tr><td>${esc(pr)}</td><td>${lc.length}</td><td>${y}</td><td>${n}</td><td>${lc.length - y - n}</td><td>${l.length - lc.length}</td><td><b>${l.length}</b></td></tr>`;
+        return `<tr><td>${esc(pr)}</td>${seeC ? `<td>${lc.length}</td>` : ''}${yn ? `<td>${y}</td><td>${n}</td><td>${lc.length - y - n}</td>` : ''}<td>${l.length - lc.length}</td><td><b>${l.length}</b></td></tr>`;
       }).join('')}</tbody>
-      <tfoot><tr><td>Total</td><td>${C.length}</td><td>${mk(C, 'Sí')}</td><td>${mk(C, 'No')}</td><td>${C.length - mk(C, 'Sí') - mk(C, 'No')}</td><td>${P.length}</td><td>${all.length}</td></tr></tfoot></table>
+      <tfoot><tr><td>Total</td>${seeC ? `<td>${C.length}</td>` : ''}${yn ? `<td>${mk(C, 'Sí')}</td><td>${mk(C, 'No')}</td><td>${C.length - mk(C, 'Sí') - mk(C, 'No')}</td>` : ''}<td>${P.length}</td><td>${all.length}</td></tr></tfoot></table>
     </div>
     <div class="toolbar tb-end">${can.export(S.role) ? '<button class="btn btn-ic" id="exp" aria-label="Exportar a Excel" title="Exportar a Excel"><i class="ti ti-file-spreadsheet"></i></button>' : ''}<button class="btn btn-ic" id="prn" aria-label="Imprimir" title="Imprimir"><i class="ti ti-printer"></i></button></div>`;
   if ($('#exp')) $('#exp').onclick = exportExcel;
@@ -909,12 +912,16 @@ function byTipo(list, rowFn, wrapClass) {
 
 /* ---------- Salud / Dietas ---------- */
 function renderHealth(main) {
+  // Coordinador/a auxiliar: Salud solo de los jóvenes de su compañía asignada.
+  if (S.role === 'coord_auxiliar' && !S.companiesLoaded) { main.innerHTML = '<p class="note">Cargando…</p>'; loadCompanies().then(() => { S.companiesLoaded = true; renderHealth(main); }); return; }
+  const auxOnly = S.role === 'coord_auxiliar';
+  const people = auxOnly ? S.people.filter((p) => p.tipo === 'Participante' && (S.myCompanies || []).includes(S.members[p.id])) : S.people;
   const kitchen = S.role === 'cocina';
   const logger = can.healthLog(S.role), owner = can.owner(S.role);
   const flagged = (p) => (kitchen ? p.food_flag : p.med_flag || p.food_flag);
   const filters = kitchen ? [['todos', 'Todos']] : [['todos', 'Con indicaciones'], ['med', 'Médico'], ['food', 'Dieta'], ...(logger ? [['all', 'Todas las personas']] : [])];
   if (!filters.some(([k]) => k === healthState.filter)) healthState.filter = 'todos';
-  const nFlag = S.people.filter(flagged).length;
+  const nFlag = people.filter(flagged).length;
   main.innerHTML = `
     <h2 class="page">${kitchen ? 'Dietas especiales' : 'Salud y alimentación'}</h2>
     <p class="sub">${plural(nFlag, 'persona', 'personas')} ${kitchen ? 'con indicaciones de alimentación.' : 'con información médica o alimentaria a tener en cuenta.'}</p>
@@ -943,7 +950,7 @@ function renderHealth(main) {
 
   const draw = () => {
     const q = norm(healthState.q);
-    const l = S.people.filter((p) => (healthState.filter === 'all' ? true : healthState.filter === 'med' ? p.med_flag : healthState.filter === 'food' ? p.food_flag : flagged(p)))
+    const l = people.filter((p) => (healthState.filter === 'all' ? true : healthState.filter === 'med' ? p.med_flag : healthState.filter === 'food' ? p.food_flag : flagged(p)))
       .filter((p) => !q || norm(`${p.first} ${p.last} ${p.pref || ''} ${p.ward} ${p.prov} ${p.med_flag ? p.med : ''} ${p.food_flag ? p.food : ''}`).includes(q));
     // Tarjeta de salud: encabezado, indicaciones resaltadas y, debajo, cuadros apilados (personal arriba, emergencia abajo).
     const row = (k, v, extra = '') => (has(v) ? `<div class="hc-row"><span>${k}</span><div>${esc(v)}${extra}</div></div>` : '');
@@ -1618,6 +1625,8 @@ async function renderCompanies(main) {
         <button class="group-h"><span class="car">▾</span>${esc(c.name)}${mine.has(c.id) ? ' <span class="badge ok">Tu compañía</span>' : ''}<span class="n">${cons.length} cons. · ${part.length} part.</span></button>
         <div class="group-b"><div class="card" style="padding:10px 14px">
           ${c.place ? `<div class="note" style="margin-bottom:6px"><i class="ti ti-map-pin"></i> ${esc(c.place)}</div>` : ''}
+          ${manage ? `<form class="form-inline" data-aux="${c.id}" style="margin:0 0 8px"><input class="input" name="ae" type="email" maxlength="120" placeholder="Correo del coordinador/a auxiliar" value="${esc(c.aux_email || '')}" style="flex:1 1 200px"><button class="btn btn-sm"><i class="ti ti-device-floppy"></i> Guardar</button></form>`
+            : c.aux_email ? `<div class="note" style="margin-bottom:6px"><i class="ti ti-user-shield"></i> Coord. auxiliar: ${esc(c.aux_email)}</div>` : ''}
           <div class="tipo-h" style="margin-top:0"><i class="ti ti-users"></i>Consejeros<span class="n">${cons.length}</span></div>${cons.map(row).join('') || '<div class="note">—</div>'}
           <div class="tipo-h"><i class="ti ti-mood-kid"></i>Participantes<span class="n">${part.length}</span></div>${part.map(row).join('') || '<div class="note">—</div>'}
           <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-sm btn-primary" data-ficha="${c.id}"><i class="ti ti-id-badge-2"></i> Ver ficha</button>${manage ? `<button class="btn btn-sm btn-danger" data-delco="${c.id}"><i class="ti ti-trash"></i> Borrar compañía</button>` : ''}</div>
@@ -1674,6 +1683,14 @@ async function renderCompanies(main) {
       };
     }
   }
+  $('#colist', main).onsubmit = async (e) => {
+    const f = e.target.closest('[data-aux]'); if (!f) return;
+    e.preventDefault();
+    const v = clean(f.ae.value).toLowerCase() || null;
+    const { error } = await sb.from('companies').update({ aux_email: v }).eq('id', f.dataset.aux);
+    if (error) return toast(/aux_email/.test(error.message) ? 'Falta ejecutar el SQL 13.' : errMsg(error));
+    toast(v ? 'Coordinador/a auxiliar asignado/a' : 'Se quitó el coordinador/a auxiliar'); await loadCompanies(); drawList();
+  };
   $('#colist', main).onclick = async (e) => {
     const gh = e.target.closest('.group-h');
     if (gh) { const sec = gh.parentElement; UI.open[sec.dataset.g] = sec.classList.contains('closed'); saveUI(); sec.classList.toggle('closed'); return; }

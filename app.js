@@ -16,6 +16,7 @@ const otpOptions = () => ({ shouldCreateUser: true, emailRedirectTo: APP_URL });
 /* =============== roles =============== */
 const ROLES = {
   coordinador: 'Coordinador/a',
+  matrimonio_director: 'Matrimonio director de sesión',
   coord_auxiliar: 'Coordinador/a auxiliar',
   coord_bienestar: 'Coordinador/a de bienestar',
   consejero: 'Consejero/a',
@@ -27,6 +28,7 @@ const roleName = (r) => (r === 'dueno' ? 'Dueña' : ROLES[r] || r);
 const TABS_BY_ROLE = {
   dueno: ['inicio', 'consejeros', 'participantes', 'obispos', 'salud', 'accesos'],
   coordinador: ['inicio', 'consejeros', 'participantes', 'obispos', 'salud'],
+  matrimonio_director: ['inicio', 'consejeros', 'participantes', 'obispos', 'salud'],
   coord_auxiliar: ['inicio', 'consejeros', 'participantes', 'obispos'],
   coord_bienestar: ['inicio', 'consejeros', 'participantes', 'salud'],
   consejero: ['participantes'],
@@ -35,9 +37,9 @@ const TABS_BY_ROLE = {
   cocina: ['salud']
 };
 const can = {
-  mark: (r) => ['dueno', 'coordinador', 'coord_auxiliar', 'coord_bienestar', 'consejero'].includes(r),
-  bishopMark: (r) => ['dueno', 'coordinador', 'coord_auxiliar'].includes(r),
-  export: (r) => ['dueno', 'coordinador'].includes(r)
+  mark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero'].includes(r),
+  bishopMark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
+  export: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r)
 };
 
 /* =============== estado =============== */
@@ -51,6 +53,18 @@ const UI_KEY = 'pfj-ui-v2'; // solo preferencias de pantalla (pestaña, grupos a
 const UI = (() => { try { return { tab: null, open: {}, ...JSON.parse(localStorage.getItem(UI_KEY) || '{}') }; } catch { return { tab: null, open: {} }; } })();
 const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(UI)); } catch { /* sin almacenamiento */ } };
 
+/* tema claro / oscuro: UI.theme = 'light' | 'dark' | undefined (sigue al celular) */
+const systemDark = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+const isDark = () => (UI.theme ? UI.theme === 'dark' : systemDark());
+function applyTheme() {
+  if (UI.theme) document.documentElement.setAttribute('data-theme', UI.theme);
+  else document.documentElement.removeAttribute('data-theme');
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute('content', isDark() ? '#16243F' : '#1F3864');
+}
+function toggleTheme() { UI.theme = isDark() ? 'light' : 'dark'; saveUI(); applyTheme(); render(); }
+applyTheme();
+
 /* =============== utilidades =============== */
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -62,6 +76,7 @@ function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.ad
 function plural(n, s, p) { return `${n} ${n === 1 ? s : p}`; }
 function errMsg(e) {
   const m = (e && (e.message || e.error_description)) || String(e);
+  if (/Error sending (confirmation|magic link|recovery)? ?email/i.test(m)) return 'No se pudo enviar el correo con el código. Avisale a la coordinación (falla en el envío de correos).';
   if (/rate limit|too many/i.test(m)) return 'Se pidieron demasiados códigos. Esperá unos minutos y volvé a intentar.';
   if (/expired|invalid/i.test(m) && /otp|token/i.test(m)) return 'El código es incorrecto o venció. Pedí uno nuevo.';
   if (/Failed to fetch|NetworkError/i.test(m)) return 'Sin conexión con el servidor. Revisá internet.';
@@ -398,12 +413,12 @@ function renderNoRole(app) {
 }
 
 const TAB_INFO = {
-  inicio: { label: 'Inicio', ico: '🏠' },
-  consejeros: { label: 'Consejeros', ico: '🧑‍🏫' },
-  participantes: { label: 'Participantes', ico: '🧒' },
-  obispos: { label: 'Obispos', ico: '✉️' },
-  salud: { label: 'Salud', ico: '🩺' },
-  accesos: { label: 'Accesos', ico: '🔑' }
+  inicio: { label: 'Inicio', ico: 'home' },
+  consejeros: { label: 'Consejeros', ico: 'users' },
+  participantes: { label: 'Participantes', ico: 'mood-kid' },
+  obispos: { label: 'Obispos', ico: 'mail' },
+  salud: { label: 'Salud', ico: 'heartbeat' },
+  accesos: { label: 'Accesos', ico: 'key' }
 };
 
 function renderShell(app) {
@@ -415,13 +430,15 @@ function renderShell(app) {
       <img src="icon.svg" alt="">
       <div class="title">PFJ Coordinación</div>
       <div class="user"><span>${esc(roleName(S.role))}</span><b>${esc(S.email)}</b></div>
-      <button id="ref" title="Actualizar datos">⟳</button>
-      <button id="logout">Salir</button>
+      <button id="theme" title="${isDark() ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}" aria-label="${isDark() ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}"><i class="ti ti-${isDark() ? 'sun' : 'moon'}"></i></button>
+      <button id="ref" title="Actualizar datos" aria-label="Actualizar datos"><i class="ti ti-refresh"></i></button>
+      <button id="logout" title="Salir" aria-label="Salir"><i class="ti ti-logout"></i></button>
     </header>
-    <nav class="tabs">${tabs.map((t) => `<button data-tab="${t}" class="${UI.tab === t ? 'active' : ''}"><span class="ico">${TAB_INFO[t].ico}</span>${label(t)}${t === 'accesos' && S.requests.length ? `<span class="dot">${S.requests.length}</span>` : ''}</button>`).join('')}</nav>
+    <nav class="tabs">${tabs.map((t) => `<button data-tab="${t}" class="${UI.tab === t ? 'active' : ''}" aria-label="${label(t)}" title="${label(t)}"><i class="ti ti-${t === 'salud' && S.role === 'cocina' ? 'tools-kitchen-2' : TAB_INFO[t].ico}"></i><span class="lbl">${label(t)}</span>${t === 'accesos' && S.requests.length ? `<span class="dot">${S.requests.length}</span>` : ''}</button>`).join('')}</nav>
     ${S.role === 'dueno' && S.requests.length && UI.tab !== 'accesos' ? `<div class="reqbar">🔔 ${plural(S.requests.length, 'solicitud de acceso pendiente', 'solicitudes de acceso pendientes')} <button class="btn btn-sm" id="goreq">Revisar</button></div>` : ''}
     <main id="main"></main>`;
   $('#logout').onclick = logout;
+  $('#theme').onclick = toggleTheme;
   $('#ref').onclick = () => refresh();
   if ($('#goreq')) $('#goreq').onclick = () => { UI.tab = 'accesos'; saveUI(); render(); };
   app.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { UI.tab = b.dataset.tab; saveUI(); render(); window.scrollTo(0, 0); }));
@@ -623,7 +640,7 @@ function renderBishops(main) {
             <div class="yn"><button class="yes ${av === 'Sí' ? 'on' : ''}" data-bm="${esc(b.key)}" data-v="Sí">Sí</button><button class="no ${av === 'No' ? 'on' : ''}" data-bm="${esc(b.key)}" data-v="No">No</button></div>
             ${b.email && b.pend ? `<a class="btn btn-sm btn-primary" href="${bishopMail(b)}">✉️ Escribir correo</a>` : ''}
           </div>
-          ${list.map((p) => `<div class="row-item"><div class="grow"><b>${esc(p.last)}, ${esc(p.first)}</b><div class="note">${esc(p.tipo)} · ${esc(p.ward || 'Sin barrio')} · ${esc(p.prov)}</div></div>${estadoBadge(p.estado)}${contactLinks(p.phone, '')}</div>`).join('')}
+          ${byTipo(list, (p) => `<div class="row-item"><div class="grow"><b>${esc(p.last)}, ${esc(p.first)}</b><div class="note">${esc(p.ward || 'Sin barrio')} · ${esc(p.prov)}</div></div>${estadoBadge(p.estado)}${contactLinks(p.phone, '')}</div>`)}
         </div></section>`;
     }).join('');
   };
@@ -646,6 +663,16 @@ function renderBishops(main) {
   };
 }
 
+/* Separa siempre consejeros y participantes, aunque estén en la misma pestaña. */
+function byTipo(list, rowFn, wrapClass) {
+  return [['Consejero', 'Consejeros', 'users'], ['Participante', 'Participantes', 'mood-kid']].map(([tipo, titulo, ico]) => {
+    const l = list.filter((p) => p.tipo === tipo);
+    if (!l.length) return '';
+    return `<div class="tipo-h"><i class="ti ti-${ico}"></i>${titulo}<span class="n">${l.length}</span></div>
+      <div class="${wrapClass || 'tipo-b'}">${l.map(rowFn).join('')}</div>`;
+  }).join('');
+}
+
 /* ---------- Salud / Dietas ---------- */
 function renderHealth(main) {
   const kitchen = S.role === 'cocina';
@@ -653,14 +680,14 @@ function renderHealth(main) {
   main.innerHTML = `
     <h2 class="page">${kitchen ? 'Dietas especiales' : 'Salud y alimentación'}</h2>
     <p class="sub">${plural(list.length, 'persona', 'personas')} ${kitchen ? 'con indicaciones de alimentación.' : 'con información médica o alimentaria a tener en cuenta.'}</p>
-    <div class="toolbar"><button class="btn" id="prn">🖨️ Imprimir esta lista</button></div>
-    <div class="list">${list.map((p) => `
+    <div class="toolbar"><button class="btn" id="prn"><i class="ti ti-printer"></i> Imprimir esta lista</button></div>
+    ${byTipo(list, (p) => `
       <div class="card"><div class="details" style="border-top:0">
-        <div><div class="k">${esc(p.tipo)} · ${esc(p.prov)}</div><b>${esc(p.last)}, ${esc(p.first)}</b>${has(p.age) ? `<div class="note">${esc(p.age)} años · ${esc(p.ward || '')}</div>` : ''}</div>
+        <div><div class="k">${esc(p.prov)}</div><b>${esc(p.last)}, ${esc(p.first)}</b>${has(p.age) ? `<div class="note">${esc(p.age)} años · ${esc(p.ward || '')}</div>` : ''}</div>
         ${p.med_flag && has(p.med) ? `<div><div class="k">Médico</div><div class="hl">${esc(p.med)}</div></div>` : ''}
         ${p.food_flag && has(p.food) ? `<div><div class="k">Alimentación</div><div class="hl">${esc(p.food)}</div></div>` : ''}
         ${has(p.c1n) || has(p.c1t) ? `<div><div class="k">Emergencia</div>${esc(p.c1n || '')} · ${esc(p.c1t || '')}${contactLinks(p.c1t, '')}</div>` : ''}
-      </div></div>`).join('') || '<div class="empty"><p>No hay personas para mostrar.</p></div>'}</div>`;
+      </div></div>`, 'list') || '<div class="empty"><p>No hay personas para mostrar.</p></div>'}`;
   $('#prn').onclick = () => window.print();
 }
 

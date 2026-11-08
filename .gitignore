@@ -1,0 +1,6 @@
+# Solo se publica la app. Nunca subir datos personales.
+serve.ps1
+*.xlsx
+*.xls
+*.csv
+*.pdf

@@ -1,6 +1,6 @@
 // Service worker: permite instalar la app y abrirla sin conexión.
 // Solo guarda los archivos de la app; NUNCA guarda respuestas de Supabase (tienen datos personales).
-const CACHE = 'pfj-v6';
+const CACHE = 'pfj-v7';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js', './config.js', './manifest.webmanifest', './icon.svg',
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
@@ -23,13 +23,14 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   const isAsset = url.origin === self.location.origin || url.hostname === 'cdn.jsdelivr.net';
   if (!isAsset) return; // Supabase y cualquier otro servicio: directo a la red, sin guardar
+  // 'no-cache' = siempre pregunta a GitHub si hay versión nueva (así nunca queda la vieja guardada).
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, url.origin === self.location.origin ? { cache: 'no-cache' } : undefined)
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
         return res;
       })
-      .catch(() => caches.match(e.request))
+      .catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
 });

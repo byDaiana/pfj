@@ -31,7 +31,7 @@ const TABS_BY_ROLE = {
   dueno: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   coordinador: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   matrimonio_director: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
-  coord_auxiliar: ['inicio', 'agenda', 'participantes', 'salud', 'mas'],
+  coord_auxiliar: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   coord_bienestar: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   consejero: ['agenda', 'participantes', 'salud', 'mas'],
   obispo: ['consejeros', 'participantes', 'mas'],

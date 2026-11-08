@@ -1,6 +1,6 @@
 // Service worker: permite instalar la app y abrirla sin conexión.
 // Solo guarda los archivos de la app; NUNCA guarda respuestas de Supabase (tienen datos personales).
-const CACHE = 'pfj-v7';
+const CACHE = 'pfj-v8';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js', './config.js', './manifest.webmanifest', './icon.svg',
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',

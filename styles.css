@@ -103,7 +103,8 @@ a { color: var(--accent); }
 .topbar button .ti { font-size: 18px; }
 
 /* ---------- botones de navegación: estilo 8 (activa expandida) ---------- */
-.tabs { display: flex; gap: 6px; align-items: center; background: var(--card); border-bottom: 1px solid var(--line); padding: 8px 12px; overflow-x: auto; position: sticky; top: 50px; z-index: 9; }
+/* Siempre abajo, en el celular y en la compu */
+.tabs { display: flex; gap: 6px; align-items: center; justify-content: center; background: var(--card); border-top: 1px solid var(--line); padding: 8px 12px max(8px, env(safe-area-inset-bottom)); overflow-x: auto; position: fixed; bottom: 0; left: 0; right: 0; z-index: 9; box-shadow: 0 -2px 8px rgba(0,0,0,.06); }
 .tabs button { position: relative; border: 0; background: none; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border-radius: 999px; font-weight: 600; font-size: 14px; white-space: nowrap; transition: background .15s, color .15s; }
 .tabs button .ti { font-size: 21px; }
 .tabs button .lbl { display: none; }
@@ -115,8 +116,7 @@ h2.page { font-size: 20px; margin: 4px 0 4px; color: var(--accent); }
 p.sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
 
 @media (max-width: 720px) {
-  .tabs { position: fixed; bottom: 0; top: auto; left: 0; right: 0; border-top: 1px solid var(--line); border-bottom: 0; justify-content: space-around; padding: 8px 8px max(8px, env(safe-area-inset-bottom)); }
-  .tabs { gap: 2px; justify-content: space-between; }
+  .tabs { gap: 2px; justify-content: space-between; padding: 8px 8px max(8px, env(safe-area-inset-bottom)); }
   .tabs button { padding: 10px 8px; }
   .tabs button.active { padding: 10px 11px; font-size: 13px; }
   .tabs button.active .lbl { max-width: 78px; overflow: hidden; text-overflow: ellipsis; }

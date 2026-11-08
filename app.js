@@ -1944,6 +1944,8 @@ async function pushSubscribe(ask) {
     }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+    // Si se crearon claves nuevas, la suscripción vieja ya no sirve: se rehace.
+    if (sub && sub.options.applicationServerKey && b64u(sub.options.applicationServerKey) !== S.vapid) { await sub.unsubscribe(); sub = null; }
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(S.vapid) });
     const j = sub.toJSON();
     const { error } = await sb.from('push_subs').upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
@@ -1966,8 +1968,8 @@ async function renderAccess(main) {
     <div class="callout">El <b>rol</b> define qué datos ve cada persona. Para <b>consejeros</b> elegí también la estaca: verán solo a los participantes de esa estaca. Los <b>obispos</b> ven a los jóvenes cuyo correo de obispo coincide con el suyo.</div>
     <div class="panel" style="padding:12px 16px" id="vp">
       <h3 style="margin:0 0 6px"><i class="ti ti-bell-ringing"></i> Notificaciones push de los avisos</h3>
-      ${S.vapid ? '<p class="note" style="margin:0">Activadas: cada aviso nuevo llega a los celulares que aceptaron notificaciones.</p>'
-        : '<p class="note" style="margin:0 0 8px">Tocá el botón para crear las claves de envío. Se hace una sola vez.</p><button class="btn btn-sm btn-primary" id="vp-gen"><i class="ti ti-key"></i> Crear claves</button>'}
+      <p class="note" style="margin:0 0 8px">${S.vapid ? 'Ya hay claves creadas. Si perdiste la privada, creá claves nuevas y reemplazá las dos en Supabase → Edge Functions → Secrets.' : 'Tocá el botón para crear las claves de envío. Se hace una sola vez.'}</p>
+      <button class="btn btn-sm ${S.vapid ? '' : 'btn-primary'}" id="vp-gen"><i class="ti ti-key"></i> ${S.vapid ? 'Crear claves nuevas' : 'Crear claves'}</button>
       <div id="vp-out"></div>
     </div>
     <div class="panel" style="padding:12px 16px">
@@ -2059,14 +2061,21 @@ async function renderAccess(main) {
     toast('Acceso quitado'); await loadAccess(); drawUsers();
   };
   if ($('#vp-gen', main)) $('#vp-gen', main).onclick = async () => {
+    if (S.vapid && !confirm('¿Crear claves nuevas? Las anteriores dejan de servir y cada persona vuelve a quedar suscripta al abrir la app.')) return;
     const { pub, priv } = await genVapid();
     const { error } = await sb.from('settings').upsert({ key: 'vapid_public', value: pub });
     if (error) return toast(errMsg(error));
     S.vapid = pub;
     $('#vp-gen', main).remove();
     $('#vp-out', main).innerHTML = `<div class="callout" style="margin-top:8px">Copiá estas dos claves en Supabase → Edge Functions → Secrets. <b>La privada se muestra una sola vez y no se guarda en ningún lado</b>: no la mandes por chat.</div>
-      <label class="note">VAPID_PUBLIC_KEY<input class="input" readonly value="${pub}" onclick="this.select()"></label>
-      <label class="note">VAPID_PRIVATE_KEY<input class="input" readonly value="${priv}" onclick="this.select()"></label>`;
+      ${[['VAPID_PUBLIC_KEY', pub], ['VAPID_PRIVATE_KEY', priv]].map(([n, v]) => `<div class="note" style="margin-top:8px"><b>${n}</b></div>
+      <div class="form-inline" style="margin:4px 0"><textarea class="input" readonly rows="2" style="flex:1 1 220px;font-family:monospace;font-size:12px">${v}</textarea>
+      <button class="btn btn-sm" data-copy="${v}"><i class="ti ti-copy"></i> Copiar</button></div>`).join('')}`;
+    $('#vp-out', main).onclick = async (e) => {
+      const b = e.target.closest('[data-copy]'); if (!b) return;
+      try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copiada'); }
+      catch { const t = b.previousElementSibling; t.select(); document.execCommand('copy'); toast('Copiada'); }
+    };
     pushSubscribe(true);
   };
   $('#add', main).onsubmit = async (e) => {

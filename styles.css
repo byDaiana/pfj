@@ -418,3 +418,17 @@ html[data-nav="centro"] .dz-bar { bottom: 96px; }
 .dl-more[open] > summary .ti { transform: rotate(180deg); }
 .dl-more[open] > summary span::after { content: ' (ocultar)'; font-weight: 400; }
 .dl-more > .dl-row:first-of-type { border-top: 1px solid var(--line); }
+/* Salud: tarjeta prolija, cuadros apilados (personal arriba, emergencia abajo) */
+.card.hc { padding: 14px; display: grid; gap: 10px; }
+.hc-head b { font-size: 16px; }
+.hc-head .note { margin-top: 2px; }
+.hc-info { display: grid; gap: 8px; }
+.hc-alert { background: var(--alert-bg); border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+.hc-alert .k, .hc-t { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-bottom: 2px; }
+.hc-alert .k .ti, .hc-t .ti { font-size: 14px; vertical-align: -2px; }
+.hc-box { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--hover); }
+.hc-row { display: grid; grid-template-columns: 38% 1fr; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; align-items: start; }
+.hc-t + .hc-row { border-top: 0; }
+.hc-row > span { color: var(--muted); font-size: 13px; }
+.hc-row .actions { margin-top: 6px; }
+.hc-log .btn { width: 100%; justify-content: center; }

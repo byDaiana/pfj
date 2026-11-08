@@ -652,7 +652,7 @@ function renderShell(app) {
     <header class="topbar">
       <img src="icon.svg" alt="">
       <div class="title">PFJ Coordinación</div>
-      ${S.role === 'dueno' ? '' : `<div class="user"><span>${esc(roleName(S.role))}</span><b>${esc(S.email)}</b></div>`}
+      ${S.role === 'dueno' ? '' : `<div class="user"><span>${esc(roleName(S.role))}</span></div>`}
       <button id="theme" title="${isDark() ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}" aria-label="${isDark() ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}"><i class="ti ti-${isDark() ? 'sun' : 'moon'}"></i></button>
       <button id="ref" title="Actualizar datos" aria-label="Actualizar datos"><i class="ti ti-refresh"></i></button>
       ${S.role === 'dueno' ? `<button id="acc" class="${UI.tab === 'accesos' ? 'on' : ''}" title="Accesos y ajustes" aria-label="Accesos y ajustes" style="position:relative"><i class="ti ti-settings"></i>${S.requests.length ? `<span class="dot" style="position:absolute;top:-4px;right:-4px">${S.requests.length}</span>` : ''}</button>` : ''}

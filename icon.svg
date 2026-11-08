@@ -1,6 +1,60 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#1F3864"/>
-  <circle cx="256" cy="200" r="70" fill="none" stroke="#FFD966" stroke-width="28"/>
-  <path d="M136 400c18-70 70-110 120-110s102 40 120 110" fill="none" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round"/>
-  <text x="256" y="476" font-family="Arial, sans-serif" font-size="64" font-weight="700" fill="#FFFFFF" text-anchor="middle">PFJ</text>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="65%"><stop offset="0" stop-color="#1E3A8A"/><stop offset=".55" stop-color="#14205C"/><stop offset="1" stop-color="#1B1446"/></radialGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".25" stop-color="#BDEBFF"/><stop offset="1" stop-color="#38BDF8" stop-opacity="0"/></radialGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
+  <g stroke="#5CC8FF" stroke-opacity=".55" stroke-width="2.2" fill="none" filter="url(#glow)">
+    <polygon points="256.0,88.0 374.8,137.2 424.0,256.0 374.8,374.8 256.0,424.0 137.2,374.8 88.0,256.0 137.2,137.2 "/>
+    <polygon points="291.2,171.0 341.0,220.8 341.0,291.2 291.2,341.0 220.8,341.0 171.0,291.2 171.0,220.8 220.8,171.0 "/>
+    <line x1="256.0" y1="88.0" x2="291.2" y2="171.0"/>
+    <line x1="256.0" y1="88.0" x2="220.8" y2="171.0"/>
+    <line x1="374.8" y1="137.2" x2="341.0" y2="220.8"/>
+    <line x1="374.8" y1="137.2" x2="291.2" y2="171.0"/>
+    <line x1="424.0" y1="256.0" x2="341.0" y2="291.2"/>
+    <line x1="424.0" y1="256.0" x2="341.0" y2="220.8"/>
+    <line x1="374.8" y1="374.8" x2="291.2" y2="341.0"/>
+    <line x1="374.8" y1="374.8" x2="341.0" y2="291.2"/>
+    <line x1="256.0" y1="424.0" x2="220.8" y2="341.0"/>
+    <line x1="256.0" y1="424.0" x2="291.2" y2="341.0"/>
+    <line x1="137.2" y1="374.8" x2="171.0" y2="291.2"/>
+    <line x1="137.2" y1="374.8" x2="220.8" y2="341.0"/>
+    <line x1="88.0" y1="256.0" x2="171.0" y2="220.8"/>
+    <line x1="88.0" y1="256.0" x2="171.0" y2="291.2"/>
+    <line x1="137.2" y1="137.2" x2="220.8" y2="171.0"/>
+    <line x1="137.2" y1="137.2" x2="171.0" y2="220.8"/>
+    <line x1="256.0" y1="88.0" x2="256.0" y2="424.0" stroke-opacity=".3"/>
+    <line x1="424.0" y1="256.0" x2="88.0" y2="256.0" stroke-opacity=".3"/>
+  </g>
+  <g fill="#9BE3FF" filter="url(#glow)">
+    <circle cx="256.0" cy="88.0" r="9"/>
+    <circle cx="374.8" cy="137.2" r="9"/>
+    <circle cx="424.0" cy="256.0" r="9"/>
+    <circle cx="374.8" cy="374.8" r="9"/>
+    <circle cx="256.0" cy="424.0" r="9"/>
+    <circle cx="137.2" cy="374.8" r="9"/>
+    <circle cx="88.0" cy="256.0" r="9"/>
+    <circle cx="137.2" cy="137.2" r="9"/>
+    <circle cx="291.2" cy="171.0" r="5.5"/>
+    <circle cx="341.0" cy="220.8" r="5.5"/>
+    <circle cx="341.0" cy="291.2" r="5.5"/>
+    <circle cx="291.2" cy="341.0" r="5.5"/>
+    <circle cx="220.8" cy="341.0" r="5.5"/>
+    <circle cx="171.0" cy="291.2" r="5.5"/>
+    <circle cx="171.0" cy="220.8" r="5.5"/>
+    <circle cx="220.8" cy="171.0" r="5.5"/>
+    <circle cx="256.0" cy="126.0" r="3.5" fill-opacity=".8"/>
+    <circle cx="347.9" cy="164.1" r="3.5" fill-opacity=".8"/>
+    <circle cx="386.0" cy="256.0" r="3.5" fill-opacity=".8"/>
+    <circle cx="347.9" cy="347.9" r="3.5" fill-opacity=".8"/>
+    <circle cx="256.0" cy="386.0" r="3.5" fill-opacity=".8"/>
+    <circle cx="164.1" cy="347.9" r="3.5" fill-opacity=".8"/>
+    <circle cx="126.0" cy="256.0" r="3.5" fill-opacity=".8"/>
+    <circle cx="164.1" cy="164.1" r="3.5" fill-opacity=".8"/>
+  </g>
+  <circle cx="256" cy="256" r="70" fill="url(#core)"/>
+  <path d="M256 196 L266 246 L316 256 L266 266 L256 316 L246 266 L196 256 L246 246 Z" fill="#FFFFFF" filter="url(#glow)"/>
+  <path d="M256 226 L262 250 L286 256 L262 262 L256 286 L250 262 L226 256 L250 250 Z" fill="#E0F7FF" transform="rotate(45 256 256)" opacity=".7"/>
+  <g fill="#9BE3FF"><path d="M118 112 l3 9 9 3 -9 3 -3 9 -3 -9 -9 -3 9 -3z" opacity=".9"/><circle cx="402" cy="404" r="2.5" opacity=".7"/><circle cx="96" cy="360" r="2" opacity=".6"/></g>
 </svg>

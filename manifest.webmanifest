@@ -1,14 +1,19 @@
 {
   "name": "PFJ Coordinación",
   "short_name": "PFJ",
-  "description": "Herramienta para coordinadores de PFJ: consejeros, participantes, obispos y salud.",
+  "description": "Herramienta para coordinar PFJ 2027: agenda, consejeros, participantes, salud, compañías y avisos.",
   "lang": "es",
+  "id": "./",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#F4F6FA",
+  "orientation": "portrait",
+  "background_color": "#14205C",
   "theme_color": "#1F3864",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }

@@ -4,3 +4,4 @@ serve.ps1
 *.xls
 *.csv
 *.pdf
+_tmp/

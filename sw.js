@@ -1,6 +1,6 @@
 ﻿// Service worker: permite instalar la app y abrirla sin conexión.
 // Solo guarda los archivos de la app; NUNCA guarda respuestas de Supabase (tienen datos personales).
-const CACHE = 'pfj-v31';
+const CACHE = 'pfj-v32';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js', './config.js', './manifest.webmanifest', './icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-180.png', './icons/favicon-32.png',
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
@@ -33,4 +33,20 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
+});
+
+// Notificaciones push de los avisos de coordinación
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'PFJ Coordinación', {
+    body: d.body || 'Hay un aviso nuevo', icon: 'icons/icon-192.png', badge: 'icons/favicon-32.png', tag: 'aviso', renotify: true
+  }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((ws) => {
+    const w = ws.find((x) => 'focus' in x);
+    return w ? w.focus() : self.clients.openWindow('./');
+  }));
 });

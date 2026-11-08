@@ -328,6 +328,8 @@ async function loadData() {
   const lbl = (st.data || []).find((x) => x.key === 'mark_label');
   if (lbl) S.markLabel = lbl.value;
   S.day1 = ((st.data || []).find((x) => x.key === 'session_day1') || {}).value || null;
+  S.vapid = ((st.data || []).find((x) => x.key === 'vapid_public') || {}).value || null;
+  if (S.vapid) pushSubscribe(false);
   const dz = (st.data || []).find((x) => x.key === 'design2');  if (dz && dz.value && !designPreviewing) { try { designSaved = { ...DESIGN_DEFAULT, ...JSON.parse(dz.value) }; localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); applyDesign(designSaved); } catch { /* nada */ } }
   // Agenda, avisos y mapa (si la base todavía no tiene esas tablas, la app sigue funcionando)
   const [sc, no, pl] = await Promise.all([
@@ -1187,8 +1189,10 @@ function renderAgenda(main) {
         e.preventDefault();
         const body = clean($('#nt', box).value); if (!body) return;
         const aud = [...box.querySelectorAll('input[name="aud"]:checked')].map((x) => x.value);
-        const { error } = await sb.from('notices').insert({ body, important: $('#ni', box).checked, created_by: S.email, audience: aud.length ? aud : null });
+        const { data: nn, error } = await sb.from('notices').insert({ body, important: $('#ni', box).checked, created_by: S.email, audience: aud.length ? aud : null }).select('id').single();
         if (error) return toast(errMsg(error));
+        // Notificación push a los celulares (si está activada en Supabase).
+        if (S.vapid) sb.functions.invoke('enviar-aviso', { body: { notice_id: nn.id } }).catch(() => {});
         const { data } = await sb.from('notices').select('*').order('created_at', { ascending: false });
         S.notices = data || []; drawNotices(); toast('Aviso publicado');
       };
@@ -1899,7 +1903,7 @@ async function renderProfile(main) {
     </form>
     <div class="panel" style="padding:12px 16px">
       <h3 style="margin:0 0 6px">Recordatorios</h3>
-      <p class="note" style="margin:0 0 10px">Te avisa 10 minutos antes de cada actividad${ROLE_COL[S.role] ? ' que te toca' : ''} y cuando llega un aviso nuevo. Funciona con la app abierta o en segundo plano.</p>
+      <p class="note" style="margin:0 0 10px">Te avisa 10 minutos antes de cada actividad${ROLE_COL[S.role] ? ' que te toca' : ''} y cuando llega un aviso nuevo. Funciona con la app abierta o en segundo plano; los avisos de coordinación llegan aunque la app esté cerrada.</p>
       ${perm === 'unsupported' ? '<p class="note">Este navegador no permite notificaciones.</p>' : perm === 'denied' ? '<p class="note">Las notificaciones están bloqueadas: habilitalas en los ajustes del navegador para esta página.</p>'
         : `<button class="btn btn-sm ${remOn ? '' : 'btn-primary'}" id="rem">${remOn ? '<i class="ti ti-bell-off"></i> Desactivar recordatorios' : '<i class="ti ti-bell-ringing"></i> Activar recordatorios'}</button>`}
     </div>`;
@@ -1912,7 +1916,7 @@ async function renderProfile(main) {
     if (remOn) { localStorage.setItem(REM_KEY, '0'); toast('Recordatorios desactivados'); return renderProfile(main); }
     const p = await Notification.requestPermission();
     if (p !== 'granted') { toast('No se dio permiso para notificaciones'); return renderProfile(main); }
-    localStorage.setItem(REM_KEY, '1'); startReminders(); notify('Recordatorios activados', 'Te avisamos 10 minutos antes de cada actividad.');
+    localStorage.setItem(REM_KEY, '1'); startReminders(); pushSubscribe(true); notify('Recordatorios activados', 'Te avisamos 10 minutos antes de cada actividad.');
     renderProfile(main);
   };
 }
@@ -1927,12 +1931,45 @@ function stakeSelect(attr, value) {
 }
 function guessRole(func) { const e = Object.entries(ROLES).find(([, v]) => v === func); return e ? e[0] : 'consejero'; }
 
+/* ---------- Notificaciones push de los avisos ---------- */
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4)), (c) => c.charCodeAt(0));
+// ask = true: pide permiso (solo desde un botón). false: se suscribe en silencio si ya hay permiso.
+async function pushSubscribe(ask) {
+  try {
+    if (!S.vapid || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'unsupported';
+    if (Notification.permission !== 'granted') {
+      if (!ask) return Notification.permission;
+      if ((await Notification.requestPermission()) !== 'granted') return 'denied';
+    }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(S.vapid) });
+    const j = sub.toJSON();
+    const { error } = await sb.from('push_subs').upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
+    return error ? 'error' : 'granted';
+  } catch { return 'error'; }
+}
+// Solo la dueña: genera las claves de envío. La pública queda en la app; la privada se copia a Supabase.
+async function genVapid() {
+  const k = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+  const pub = b64u(await crypto.subtle.exportKey('raw', k.publicKey));
+  const priv = (await crypto.subtle.exportKey('jwk', k.privateKey)).d;
+  return { pub, priv };
+}
+
 async function renderAccess(main) {
   await loadAccess().catch((e) => toast(errMsg(e)));
   main.innerHTML = `
     <h2 class="page">Accesos y ajustes</h2>
     <p class="sub">Solo vos ves esta sección. Las personas piden acceso desde la pantalla de ingreso; vos elegís a quién aceptar y con qué rol.</p>
     <div class="callout">El <b>rol</b> define qué datos ve cada persona. Para <b>consejeros</b> elegí también la estaca: verán solo a los participantes de esa estaca. Los <b>obispos</b> ven a los jóvenes cuyo correo de obispo coincide con el suyo.</div>
+    <div class="panel" style="padding:12px 16px" id="vp">
+      <h3 style="margin:0 0 6px"><i class="ti ti-bell-ringing"></i> Notificaciones push de los avisos</h3>
+      ${S.vapid ? '<p class="note" style="margin:0">Activadas: cada aviso nuevo llega a los celulares que aceptaron notificaciones.</p>'
+        : '<p class="note" style="margin:0 0 8px">Tocá el botón para crear las claves de envío. Se hace una sola vez.</p><button class="btn btn-sm btn-primary" id="vp-gen"><i class="ti ti-key"></i> Crear claves</button>'}
+      <div id="vp-out"></div>
+    </div>
     <div class="panel" style="padding:12px 16px">
       <h3 style="margin:0 0 10px">Solicitudes pendientes</h3>
       <div class="list" id="reqs"></div>
@@ -2020,6 +2057,17 @@ async function renderAccess(main) {
     const { error } = await sb.from('app_users').delete().eq('email', em);
     if (error) return toast(errMsg(error));
     toast('Acceso quitado'); await loadAccess(); drawUsers();
+  };
+  if ($('#vp-gen', main)) $('#vp-gen', main).onclick = async () => {
+    const { pub, priv } = await genVapid();
+    const { error } = await sb.from('settings').upsert({ key: 'vapid_public', value: pub });
+    if (error) return toast(errMsg(error));
+    S.vapid = pub;
+    $('#vp-gen', main).remove();
+    $('#vp-out', main).innerHTML = `<div class="callout" style="margin-top:8px">Copiá estas dos claves en Supabase → Edge Functions → Secrets. <b>La privada se muestra una sola vez y no se guarda en ningún lado</b>: no la mandes por chat.</div>
+      <label class="note">VAPID_PUBLIC_KEY<input class="input" readonly value="${pub}" onclick="this.select()"></label>
+      <label class="note">VAPID_PRIVATE_KEY<input class="input" readonly value="${priv}" onclick="this.select()"></label>`;
+    pushSubscribe(true);
   };
   $('#add', main).onsubmit = async (e) => {
     e.preventDefault();

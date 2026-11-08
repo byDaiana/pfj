@@ -1,4 +1,4 @@
-﻿/* PFJ Coordinación — versión conectada a Supabase.
+/* PFJ Coordinación — versión conectada a Supabase.
  * Ingreso con código por correo (Supabase Auth). Los datos y permisos viven en Supabase;
  * cada rol recibe del servidor solo lo que puede ver (ver supabase/schema.sql).
  */
@@ -34,7 +34,7 @@ const TABS_BY_ROLE = {
   coord_auxiliar: ['inicio', 'agenda', 'consejeros', 'participantes', 'mas'],
   coord_bienestar: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   consejero: ['agenda', 'participantes', 'mas'],
-  obispo: ['agenda', 'consejeros', 'participantes', 'mas'],
+  obispo: ['consejeros', 'participantes', 'mas'],
   enfermeria: ['agenda', 'salud', 'consejeros', 'participantes', 'mas'],
   cocina: ['agenda', 'salud', 'mas']
 };
@@ -47,6 +47,8 @@ const can = {
   health: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_bienestar', 'enfermeria']),
   headcount: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero']),
   seeAllHeadcounts: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar']),
+  directory: inRoles(['dueno', 'coordinador', 'matrimonio_director']),
+  companies: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero', 'enfermeria']),
   mark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero'].includes(r),
   bishopMark: (r) => ['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar'].includes(r),
   export: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r)
@@ -58,7 +60,7 @@ const S = {
   people: [], bishopMarks: {}, markLabel: 'Confirmado',
   users: [], requests: [],
   schedule: [], notices: [], places: [], day1: null, extrasOk: true,
-  reads: [], offline: false,
+  reads: [], offline: false, companies: [], members: {},
   loading: false
 };
 const UI_KEY = 'pfj-ui-v2'; // solo preferencias de pantalla (pestaña, grupos abiertos); nada personal
@@ -229,6 +231,7 @@ async function loadData() {
   S.schedule = sc.data || []; S.notices = no.data || []; S.places = pl.data || [];
   const rd = await sb.from('notice_reads').select('notice_id,email,read_at');
   S.reads = rd.error ? [] : rd.data || [];
+  await loadCompanies();
   saveOfflineCopy();
   if (can.bishopMark(S.role)) {
     const { data } = await sb.from('bishop_marks').select('bishop_key,value');
@@ -236,6 +239,15 @@ async function loadData() {
   }
   if (S.role === 'dueno') await loadAccess();
 }
+async function loadCompanies() {
+  if (!can.companies(S.role)) { S.companies = []; S.members = {}; return; }
+  const [c, m] = await Promise.all([sb.from('companies').select('*').order('name'), sb.from('company_members').select('company_id,person_id')]);
+  S.companies = c.error ? [] : c.data || [];
+  S.members = Object.fromEntries((m.error ? [] : m.data || []).map((x) => [x.person_id, x.company_id]));
+  S.myCompanies = [];
+  if (S.role === 'consejero') { const r = await sb.rpc('my_company_ids'); S.myCompanies = r.data || []; }
+}
+const companyName = (id) => (S.companies.find((c) => c.id === id) || {}).name || '';
 async function loadAccess() {
   const [u, r] = await Promise.all([
     sb.from('app_users').select('*').order('created_at'),
@@ -581,8 +593,7 @@ function bindDropzone(root) {
 /* ---------- Inicio ---------- */
 function renderHome(main) {
   renderHomeInner(main);
-  const nn = nowNextCard();
-  if (nn) $('.stats', main)?.insertAdjacentHTML('beforebegin', nn);
+  $('.stats', main)?.insertAdjacentHTML('beforebegin', nowNextCard() + remindersPanel());
 }
 function renderHomeInner(main) {
   const all = S.people;
@@ -875,6 +886,33 @@ function nowNextCard() {
 }
 const ROLE_OPTIONS = () => Object.entries(ROLES);
 
+/* Panel de recordatorios: estado de la campanita y las próximas actividades de hoy. */
+function remindersPanel() {
+  const today = todayDayNumber();
+  const on = localStorage.getItem(REM_KEY) === '1' && 'Notification' in window && Notification.permission === 'granted';
+  const myCol = ROLE_COL[S.role];
+  const now = new Date(), nm = now.getHours() * 60 + now.getMinutes();
+  const next = today === null ? [] : S.schedule.filter((r) => r.day === today && (toMin(r.start_time) ?? -1) > nm && (!myCol || (r[myCol] && r[myCol] !== '—')))
+    .sort((a, b) => toMin(a.start_time) - toMin(b.start_time)).slice(0, 3);
+  const inMin = (r) => { const d = toMin(r.start_time) - nm; return d < 60 ? `en ${d} min` : `en ${Math.floor(d / 60)} h ${d % 60 ? (d % 60) + ' min' : ''}`; };
+  return `<div class="panel rem">
+    <div class="rem-h"><i class="ti ti-${on ? 'bell-ringing' : 'bell-off'}"></i><b>Recordatorios</b><span class="badge ${on ? 'ok' : ''}">${on ? 'Activados' : 'Desactivados'}</span><span style="flex:1"></span>
+      <button class="btn btn-sm ${on ? '' : 'btn-primary'}" data-remtoggle>${on ? 'Desactivar' : 'Activar'}</button></div>
+    ${next.length ? `<div class="rem-l">${next.map((r) => `<div><span class="rem-t">${esc(r.start_time)}</span><span class="grow">${esc(r.title)}${r.place ? ` <span class="note">· ${esc(r.place)}</span>` : ''}</span><span class="note">${inMin(r)}</span></div>`).join('')}</div>`
+      : `<p class="note" style="margin:6px 0 0">${today === null ? 'Los recordatorios empiezan cuando arranque la conferencia.' : 'No quedan actividades por hoy.'}</p>`}
+    <p class="note" style="margin:6px 0 0">${on ? 'Te avisamos 10 minutos antes' + (myCol ? ' de lo que te toca' : '') + '.' : 'Activalos para recibir un aviso 10 minutos antes de cada actividad.'}</p>
+  </div>`;
+}
+async function toggleReminders() {
+  const on = localStorage.getItem(REM_KEY) === '1' && Notification.permission === 'granted';
+  if (on) { localStorage.setItem(REM_KEY, '0'); toast('Recordatorios desactivados'); return render(); }
+  if (!('Notification' in window)) return toast('Este navegador no permite notificaciones');
+  const p = await Notification.requestPermission();
+  if (p !== 'granted') { toast('Hay que permitir las notificaciones en el navegador'); return render(); }
+  localStorage.setItem(REM_KEY, '1'); startReminders(); notify('Recordatorios activados', 'Te avisamos 10 minutos antes de cada actividad.'); render();
+}
+document.addEventListener('click', (e) => { if (e.target.closest('[data-remtoggle]')) toggleReminders(); });
+
 function renderAgenda(main) {
   const editor = can.editEvent(S.role) && !S.offline;
   if (!S.extrasOk) {
@@ -890,6 +928,7 @@ function renderAgenda(main) {
     <p class="sub">${S.day1 ? `La conferencia empieza el ${dayDate(1).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}.` : 'Todavía no se cargó la fecha del Día 1.'}</p>
     ${S.offline ? '<div class="callout warn"><i class="ti ti-wifi-off"></i> Sin conexión: estás viendo la última agenda guardada en este celular. Se actualiza sola cuando vuelva la señal.</div>' : ''}
     ${nowNextCard()}
+    ${remindersPanel()}
     ${(() => { const n = S.schedule.filter((r) => r.changed_at && Date.now() - new Date(r.changed_at) < 86400000).length; return n ? `<div class="callout"><i class="ti ti-refresh-alert"></i> ${plural(n, 'actividad cambió', 'actividades cambiaron')} en las últimas 24 horas (marcadas con «Cambió»).</div>` : ''; })()}
     <section id="avisos"></section>
     <div class="panel" style="padding:12px 16px">
@@ -1146,9 +1185,10 @@ async function renderMap(main) {
 
 /* ---------- Más: menú de secciones ---------- */
 const MORE = [
+  { id: 'companias', label: 'Compañías', ico: 'users-group', desc: 'Grupos de participantes con sus consejeros', show: (r) => can.companies(r) },
   { id: 'recuentos', label: 'Recuentos', ico: 'clipboard-check', desc: 'Presentes en cada recuento', show: (r) => can.headcount(r) },
   { id: 'incidentes', label: 'Incidentes', ico: 'alert-triangle', desc: 'Avisar un problema de salud, conducta o seguridad', show: () => true },
-  { id: 'directorio', label: 'Directorio', ico: 'address-book', desc: 'Quién es quién en el personal', show: () => true },
+  { id: 'directorio', label: 'Directorio', ico: 'address-book', desc: 'Quién es quién en el personal', show: (r) => can.directory(r) },
   { id: 'mapa', label: 'Mapa', ico: 'map-2', desc: 'Lugares del colegio', show: () => true },
   { id: 'obispos', label: 'Obispos', ico: 'mail', desc: 'Inscripciones por unidad', show: (r) => can.bishopMark(r) },
   { id: 'recursos', label: 'Recursos', ico: 'books', desc: 'Manuales, videos, himnos y juegos', show: () => true },
@@ -1162,7 +1202,7 @@ function renderMore(main) {
     $('#back', main).onclick = () => { UI.sub = null; saveUI(); render(); };
     const sub = $('#sub', main);
     if (S.offline && m.id !== 'mapa' && m.id !== 'perfil') { sub.innerHTML = '<div class="empty"><p>Esta sección necesita conexión.</p></div>'; return; }
-    return ({ recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile }[m.id])(sub);
+    return ({ companias: renderCompanies, recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile }[m.id])(sub);
   }
   main.innerHTML = `<h2 class="page">Más</h2><div class="tiles">${items.map((m) => `<button class="tile" data-sub="${m.id}"><i class="ti ti-${m.ico}"></i><b>${m.label}</b><span class="note">${m.desc}</span></button>`).join('')}</div>`;
   main.querySelector('.tiles').onclick = (e) => { const b = e.target.closest('[data-sub]'); if (!b) return; UI.sub = b.dataset.sub; saveUI(); render(); window.scrollTo(0, 0); };
@@ -1171,45 +1211,184 @@ const dbMissing = (err) => err && /does not exist|schema cache|Could not find/i.
 const missingMsg = () => `<div class="empty"><div class="big"><i class="ti ti-database-off"></i></div><p>Esta sección todavía no está activada.${S.role === 'dueno' ? '<br>Falta ejecutar <b>07_funciones_completas.sql</b> en Supabase.' : ''}</p></div>`;
 const fmtWhen = (d) => new Date(d).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 
-/* Recuentos: el consejero carga presentes; coordinación y auxiliares ven todo en vivo. */
+/* Compañías: los coordinadores arman los grupos rápido; el resto los ve. */
+const coState = { target: null, tipo: 'Participante', q: '', prov: '', onlyFree: true, sel: new Set() };
+async function renderCompanies(main) {
+  const manage = can.editEvent(S.role);
+  await loadCompanies();
+  if (!S.companies.length && !manage) { main.innerHTML = '<h2 class="page">Compañías</h2><div class="empty"><p>Todavía no se armaron las compañías.</p></div>'; return; }
+  const membersOf = (cid) => S.people.filter((p) => S.members[p.id] === cid);
+  const mine = new Set(S.myCompanies || []);
+  const list = S.role === 'consejero' ? S.companies.filter((c) => mine.has(c.id)) : S.companies;
+  if (!coState.target || !S.companies.some((c) => c.id === coState.target)) coState.target = S.companies[0]?.id || null;
+  main.innerHTML = `<h2 class="page">Compañías</h2>
+    <p class="sub">${plural(S.companies.length, 'compañía', 'compañías')}.${manage ? ' Creá las compañías y después asigná a las personas de a muchas a la vez.' : ''}</p>
+    ${manage ? `<form id="cof" class="form-inline"><input class="input" id="co-n" maxlength="60" placeholder="Nombre de la nueva compañía" required><input class="input" id="co-p" maxlength="60" placeholder="Punto de encuentro (opcional)" list="co-places" style="flex:1 1 180px"><datalist id="co-places">${S.places.map((p) => `<option value="${esc(p.name)}">`).join('')}</datalist><button class="btn btn-primary"><i class="ti ti-plus"></i> Crear</button></form>` : ''}
+    ${manage && S.companies.length ? `<div class="panel" style="padding:12px 16px" id="assign">
+      <h3 style="margin:0 0 10px"><i class="ti ti-user-plus"></i> Asignar personas</h3>
+      <div class="form-inline" style="margin-bottom:8px">
+        <select class="input" id="as-t" style="flex:1 1 200px">${S.companies.map((c) => `<option value="${c.id}" ${c.id === coState.target ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+        <select class="input" id="as-prov" style="flex:0 1 180px"><option value="">Todas las provincias</option>${PROVINCES.filter((pr) => S.people.some((p) => p.prov === pr)).map((pr) => `<option ${pr === coState.prov ? 'selected' : ''}>${pr}</option>`).join('')}</select>
+      </div>
+      <div class="chips" id="as-tipo" style="margin-bottom:8px">
+        <button type="button" class="chip ${coState.tipo === 'Participante' ? 'on' : ''}" data-t="Participante">Participantes</button>
+        <button type="button" class="chip ${coState.tipo === 'Consejero' ? 'on' : ''}" data-t="Consejero">Consejeros (con «Sí»)</button>
+        <label class="chip ${coState.onlyFree ? 'on' : ''}" id="as-free" style="cursor:pointer">Solo sin compañía</label>
+      </div>
+      <input class="input" id="as-q" type="search" placeholder="Buscar nombre o barrio…" value="${esc(coState.q)}" style="margin-bottom:8px">
+      <div class="as-bar"><label><input type="checkbox" id="as-all"> Seleccionar todos</label><span id="as-n" class="note"></span><button class="btn btn-primary btn-sm" id="as-go"><i class="ti ti-arrow-right"></i> Agregar</button></div>
+      <div class="as-list" id="as-list"></div>
+    </div>` : ''}
+    <div id="colist"></div>`;
+
+  const drawList = () => {
+    $('#colist', main).innerHTML = list.length ? list.map((c) => {
+      const ms = membersOf(c.id), cons = ms.filter((p) => p.tipo === 'Consejero'), part = ms.filter((p) => p.tipo === 'Participante');
+      const row = (p) => `<div class="co-m"><span>${esc(p.last)}, ${esc(p.first)} <span class="note">· ${esc(p.ward || p.prov || '')}</span></span>${manage ? `<button class="linkbtn" data-rm="${esc(p.id)}" aria-label="Quitar de la compañía"><i class="ti ti-x"></i></button>` : ''}</div>`;
+      return `<section class="group ${UI.open['co' + c.id] === false ? 'closed' : ''}" data-g="co${c.id}">
+        <button class="group-h"><span class="car">▾</span>${esc(c.name)}${mine.has(c.id) ? ' <span class="badge ok">Tu compañía</span>' : ''}<span class="n">${cons.length} cons. · ${part.length} part.</span></button>
+        <div class="group-b"><div class="card" style="padding:10px 14px">
+          ${c.place ? `<div class="note" style="margin-bottom:6px"><i class="ti ti-map-pin"></i> ${esc(c.place)}</div>` : ''}
+          <div class="tipo-h" style="margin-top:0"><i class="ti ti-users"></i>Consejeros<span class="n">${cons.length}</span></div>${cons.map(row).join('') || '<div class="note">—</div>'}
+          <div class="tipo-h"><i class="ti ti-mood-kid"></i>Participantes<span class="n">${part.length}</span></div>${part.map(row).join('') || '<div class="note">—</div>'}
+          ${manage ? `<div style="margin-top:10px;text-align:right"><button class="btn btn-sm btn-danger" data-delco="${c.id}"><i class="ti ti-trash"></i> Borrar compañía</button></div>` : ''}
+        </div></div></section>`;
+    }).join('') : `<div class="empty"><p>${S.role === 'consejero' ? 'Todavía no te asignaron a una compañía.' : 'Todavía no hay compañías.'}</p></div>`;
+  };
+
+  const candidates = () => {
+    const q = norm(coState.q);
+    return S.people.filter((p) => p.tipo === coState.tipo && (coState.tipo !== 'Consejero' || p.mark === 'Sí'))
+      .filter((p) => !coState.prov || p.prov === coState.prov)
+      .filter((p) => !coState.onlyFree || !S.members[p.id])
+      .filter((p) => !q || norm(`${p.first} ${p.last} ${p.ward} ${p.stake}`).includes(q))
+      .sort((a, b) => a.last.localeCompare(b.last));
+  };
+  const drawAssign = () => {
+    const box = $('#as-list', main); if (!box) return;
+    const c = candidates();
+    box.innerHTML = c.map((p) => `<label class="as-item"><input type="checkbox" value="${esc(p.id)}" ${coState.sel.has(p.id) ? 'checked' : ''}>
+      <span><b>${esc(p.last)}, ${esc(p.first)}</b><span class="note"> · ${esc([p.sex, p.age ? p.age + ' años' : '', p.ward || p.prov].filter(Boolean).join(' · '))}${S.members[p.id] ? ' · en ' + esc(companyName(S.members[p.id])) : ''}</span></span></label>`).join('')
+      || `<p class="note" style="padding:8px">${coState.tipo === 'Consejero' ? 'No hay consejeros con «Sí» para mostrar.' : 'No hay participantes para mostrar.'}</p>`;
+    $('#as-n', main).textContent = coState.sel.size ? `${coState.sel.size} seleccionados` : `${c.length} en la lista`;
+    $('#as-all', main).checked = c.length > 0 && c.every((p) => coState.sel.has(p.id));
+  };
+  drawList(); drawAssign();
+
+  if (manage) {
+    $('#cof', main).onsubmit = async (e) => {
+      e.preventDefault();
+      const { data, error } = await sb.from('companies').insert({ name: clean($('#co-n', main).value), place: clean($('#co-p', main).value) || null }).select().single();
+      if (error) return toast(dbMissing(error) ? 'Falta activar compañías (SQL 08).' : errMsg(error));
+      coState.target = data.id; toast('Compañía creada'); renderCompanies(main);
+    };
+    if ($('#assign', main)) {
+      $('#as-t', main).onchange = (e) => { coState.target = +e.target.value; };
+      $('#as-prov', main).onchange = (e) => { coState.prov = e.target.value; drawAssign(); };
+      $('#as-q', main).oninput = (e) => { coState.q = e.target.value; drawAssign(); };
+      $('#as-tipo', main).onclick = (e) => {
+        const t = e.target.closest('[data-t]'), f = e.target.closest('#as-free');
+        if (t) { coState.tipo = t.dataset.t; coState.sel.clear(); main.querySelectorAll('#as-tipo [data-t]').forEach((x) => x.classList.toggle('on', x === t)); }
+        if (f) { coState.onlyFree = !coState.onlyFree; f.classList.toggle('on', coState.onlyFree); }
+        drawAssign();
+      };
+      $('#as-list', main).onchange = (e) => { const cb = e.target; if (cb.type !== 'checkbox') return; if (cb.checked) coState.sel.add(cb.value); else coState.sel.delete(cb.value); drawAssign(); };
+      $('#as-all', main).onchange = (e) => { candidates().forEach((p) => (e.target.checked ? coState.sel.add(p.id) : coState.sel.delete(p.id))); drawAssign(); };
+      $('#as-go', main).onclick = async () => {
+        if (!coState.sel.size) return toast('Marcá a quién querés agregar');
+        const cid = +$('#as-t', main).value;
+        const rows = [...coState.sel].map((pid) => ({ company_id: cid, person_id: pid }));
+        const { error } = await sb.from('company_members').upsert(rows, { onConflict: 'person_id' });
+        if (error) return toast(errMsg(error));
+        toast(`${plural(rows.length, 'persona agregada', 'personas agregadas')} a ${companyName(cid)}`);
+        coState.sel.clear(); await loadCompanies(); drawList(); drawAssign();
+      };
+    }
+  }
+  $('#colist', main).onclick = async (e) => {
+    const gh = e.target.closest('.group-h');
+    if (gh) { const sec = gh.parentElement; UI.open[sec.dataset.g] = sec.classList.contains('closed'); saveUI(); sec.classList.toggle('closed'); return; }
+    const rm = e.target.closest('[data-rm]');
+    if (rm) { const { error } = await sb.from('company_members').delete().eq('person_id', rm.dataset.rm); if (error) return toast(errMsg(error)); await loadCompanies(); drawList(); drawAssign(); return; }
+    const dc = e.target.closest('[data-delco]');
+    if (dc) {
+      if (!confirm(`¿Borrar la compañía «${companyName(+dc.dataset.delco)}»? Las personas quedan sin compañía.`)) return;
+      const { error } = await sb.from('companies').delete().eq('id', dc.dataset.delco); if (error) return toast(errMsg(error));
+      await loadCompanies(); renderCompanies(main);
+    }
+  };
+}
+
+/* Recuentos: se elige el recuento del horario y la compañía; se marca la asistencia en la lista. */
+const hcState = { sid: null, cid: null, present: new Set() };
 async function renderHeadcounts(main) {
   const seeAll = can.seeAllHeadcounts(S.role);
+  await loadCompanies();
   const today = todayDayNumber();
-  const counts = S.schedule.filter((r) => /recuento/i.test(r.title) && (today === null || r.day === today))
-    .sort((a, b) => (toMin(a.start_time) ?? 0) - (toMin(b.start_time) ?? 0));
-  let q = sb.from('headcounts').select('*').order('created_at', { ascending: false }).limit(300);
+  const counts = S.schedule.filter((r) => /recuento/i.test(r.title)).sort((a, b) => a.day - b.day || (toMin(a.start_time) ?? 0) - (toMin(b.start_time) ?? 0));
+  if (!counts.some((r) => String(r.id) === String(hcState.sid))) {
+    const now = new Date(), nm = now.getHours() * 60 + now.getMinutes();
+    const todays = counts.filter((r) => r.day === today);
+    const best = todays.filter((r) => (toMin(r.start_time) ?? 0) <= nm + 30).pop() || todays[0] || counts[0];
+    hcState.sid = best ? best.id : null;
+  }
+  const comps = S.role === 'consejero' ? S.companies.filter((c) => (S.myCompanies || []).includes(c.id)) : S.companies;
+  if (!comps.some((c) => c.id === hcState.cid)) hcState.cid = comps[0]?.id || null;
+  let q = sb.from('headcounts').select('*').order('created_at', { ascending: false }).limit(400);
   if (!seeAll) q = q.eq('created_by', S.email);
   const { data, error } = await q;
   if (dbMissing(error)) { main.innerHTML = missingMsg(); return; }
   const list = data || [];
-  const lastExpected = localStorage.getItem('pfj-hc-expected') || '';
+  const days = [...new Set(counts.map((r) => r.day))];
+  const roster = () => S.people.filter((p) => S.members[p.id] === hcState.cid && p.tipo === 'Participante').sort((a, b) => a.last.localeCompare(b.last));
   main.innerHTML = `<h2 class="page">Recuentos</h2>
-    <p class="sub">${today !== null ? `Recuentos de hoy (${esc(dayLabel(today))}).` : 'Cargá la fecha del Día 1 para ver los recuentos del día.'}</p>
+    <p class="sub">Elegí el recuento y la compañía, y marcá quién está.</p>
     <form id="hcf" class="panel ev-edit" style="padding:12px 16px">
-      <h3 style="margin:0">Cargar un recuento</h3>
-      <label>Momento<select class="input" id="hc-s">${counts.map((r) => `<option value="${r.id}">${esc(r.start_time || '')} · ${esc(r.title)}</option>`).join('')}<option value="">Otro</option></select></label>
-      <div class="ev-grid" style="grid-template-columns:1fr 1fr"><label>Presentes<input class="input" type="number" min="0" id="hc-p" required></label><label>Esperados<input class="input" type="number" min="0" id="hc-e" value="${esc(lastExpected)}"></label></div>
-      <label>Faltan (nombres, si hay)<input class="input" id="hc-m" maxlength="500" placeholder="Ej.: Ana Pérez (en enfermería)"></label>
-      <button class="btn btn-primary btn-sm" style="justify-self:start"><i class="ti ti-check"></i> Enviar recuento</button>
+      <label>Recuento<select class="input" id="hc-s">${counts.length ? days.map((d) => `<optgroup label="${esc(dayLabel(d))}${d === today ? ' · hoy' : ''}">${counts.filter((r) => r.day === d).map((r) => `<option value="${r.id}" ${String(r.id) === String(hcState.sid) ? 'selected' : ''}>${esc(r.start_time || '')} · ${esc(r.title.replace(/\s*\|\s*/g, ' · '))}</option>`).join('')}</optgroup>`).join('') : '<option value="">No hay recuentos en el horario</option>'}</select></label>
+      ${comps.length ? `<label>Compañía<select class="input" id="hc-c">${comps.map((c) => `<option value="${c.id}" ${c.id === hcState.cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
+      <div id="hc-roster"></div>
+      <button class="btn btn-primary" style="justify-self:start" ${counts.length ? '' : 'disabled'}><i class="ti ti-check"></i> Enviar recuento</button>
     </form>
     <div class="panel" style="padding:12px 16px"><h3 style="margin:0 0 10px">${seeAll ? 'Recuentos recibidos' : 'Mis recuentos'}</h3><div id="hcl"></div></div>`;
-  const byActivity = {};
-  list.forEach((h) => { const k = h.schedule_id ? 's' + h.schedule_id : 'l' + (h.label || 'Otro'); (byActivity[k] = byActivity[k] || []).push(h); });
-  $('#hcl', main).innerHTML = Object.keys(byActivity).length ? Object.entries(byActivity).map(([k, hs]) => {
-    const act = S.schedule.find((r) => 's' + r.id === k);
+
+  const drawRoster = () => {
+    const box = $('#hc-roster', main), r = roster();
+    if (!comps.length || !r.length) {
+      box.innerHTML = `${comps.length ? '<p class="note" style="margin:0">Esta compañía todavía no tiene participantes cargados. Podés cargar el número a mano:</p>' : '<p class="note" style="margin:0">Cuando estén armadas las compañías, acá vas a ver la lista para marcar asistencia. Mientras tanto, cargá el número:</p>'}
+        <div class="ev-grid" style="grid-template-columns:1fr 1fr;margin-top:8px"><label>Presentes<input class="input" type="number" min="0" id="hc-p" required></label><label>Esperados<input class="input" type="number" min="0" id="hc-e"></label></div>
+        <label style="margin-top:8px">Faltan<input class="input" id="hc-m" maxlength="500"></label>`;
+      return;
+    }
+    box.innerHTML = `<div class="as-bar"><b id="hc-count">${hcState.present.size} de ${r.length} presentes</b><span style="flex:1"></span><button type="button" class="btn btn-sm" id="hc-all">Todos presentes</button><button type="button" class="btn btn-sm" id="hc-none">Ninguno</button></div>
+      <div class="as-list att">${r.map((p) => `<label class="as-item ${hcState.present.has(p.id) ? 'on' : ''}"><input type="checkbox" value="${esc(p.id)}" ${hcState.present.has(p.id) ? 'checked' : ''}><span><b>${esc(p.last)}, ${esc(p.first)}</b></span><i class="ti ti-${hcState.present.has(p.id) ? 'circle-check' : 'circle-dashed'}"></i></label>`).join('')}</div>`;
+    $('#hc-all', box).onclick = () => { r.forEach((p) => hcState.present.add(p.id)); drawRoster(); };
+    $('#hc-none', box).onclick = () => { hcState.present.clear(); drawRoster(); };
+    box.querySelector('.att').onchange = (e) => { const cb = e.target; if (cb.checked) hcState.present.add(cb.value); else hcState.present.delete(cb.value); drawRoster(); };
+  };
+  drawRoster();
+  if ($('#hc-c', main)) $('#hc-c', main).onchange = (e) => { hcState.cid = +e.target.value; hcState.present.clear(); drawRoster(); };
+  $('#hc-s', main).onchange = (e) => { hcState.sid = e.target.value; };
+
+  const groups = {};
+  list.forEach((h) => { const k = h.schedule_id || 'x'; (groups[k] = groups[k] || []).push(h); });
+  $('#hcl', main).innerHTML = Object.keys(groups).length ? Object.entries(groups).map(([k, hs]) => {
+    const act = S.schedule.find((r) => String(r.id) === String(k));
     const sumP = hs.reduce((a, h) => a + h.present, 0), sumE = hs.reduce((a, h) => a + (h.expected || 0), 0);
-    return `<div class="row-item" style="display:block"><b>${esc(act ? `${dayLabel(act.day)} · ${act.start_time || ''} · ${act.title}` : (hs[0].label || 'Otro'))}</b>
-      ${seeAll ? `<div class="badges"><span class="badge ${sumE && sumP < sumE ? 'bad' : 'ok'}">${sumP}${sumE ? ' de ' + sumE : ''} presentes</span><span class="badge">${plural(hs.length, 'recuento', 'recuentos')}</span></div>` : ''}
-      <div class="note" style="margin-top:6px">${hs.map((h) => `${esc(h.created_by || '')}: <b>${h.present}${h.expected ? '/' + h.expected : ''}</b>${h.missing ? ' · faltan: ' + esc(h.missing) : ''} · ${fmtWhen(h.created_at)}`).join('<br>')}</div></div>`;
+    return `<div class="row-item" style="display:block"><b>${esc(act ? `${dayLabel(act.day)} · ${act.start_time || ''} · ${act.title.replace(/\s*\|\s*/g, ' · ')}` : 'Recuento')}</b>
+      ${seeAll ? `<div class="badges"><span class="badge ${sumE && sumP < sumE ? 'bad' : 'ok'}">${sumP}${sumE ? ' de ' + sumE : ''} presentes</span><span class="badge">${plural(hs.length, 'compañía', 'compañías')}</span></div>` : ''}
+      <div class="note" style="margin-top:6px">${hs.map((h) => `${h.company_id ? '<b>' + esc(companyName(h.company_id)) + '</b> · ' : ''}${h.present}${h.expected ? '/' + h.expected : ''}${h.missing ? ' · faltan: ' + esc(h.missing) : ''} · ${esc(h.created_by || '')} · ${fmtWhen(h.created_at)}`).join('<br>')}</div></div>`;
   }).join('') : '<p class="note" style="margin:0">Todavía no hay recuentos.</p>';
+
   $('#hcf', main).onsubmit = async (e) => {
     e.preventDefault();
-    const sid = $('#hc-s', main).value, act = S.schedule.find((r) => String(r.id) === sid);
-    const row = { schedule_id: sid ? +sid : null, label: act ? null : 'Otro', present: +$('#hc-p', main).value, expected: $('#hc-e', main).value ? +$('#hc-e', main).value : null, missing: clean($('#hc-m', main).value) || null, created_by: S.email };
-    const { error: err } = await sb.from('headcounts').insert(row);
+    const r = roster(), useList = comps.length && r.length;
+    const row = { schedule_id: hcState.sid ? +hcState.sid : null, company_id: hcState.cid || null, created_by: S.email };
+    if (useList) { row.present = r.filter((p) => hcState.present.has(p.id)).length; row.expected = r.length; row.missing = r.filter((p) => !hcState.present.has(p.id)).map((p) => `${p.first} ${p.last}`).join(', ') || null; }
+    else { row.present = +$('#hc-p', main).value; row.expected = $('#hc-e', main).value ? +$('#hc-e', main).value : null; row.missing = clean($('#hc-m', main).value) || null; }
+    let { error: err } = await sb.from('headcounts').insert(row);
+    if (err && /company_id/.test(err.message)) { delete row.company_id; ({ error: err } = await sb.from('headcounts').insert(row)); }
     if (err) return toast(errMsg(err));
-    if (row.expected !== null) localStorage.setItem('pfj-hc-expected', row.expected);
-    toast('Recuento enviado'); renderHeadcounts(main);
+    hcState.present.clear(); toast(`Recuento enviado: ${row.present}${row.expected ? ' de ' + row.expected : ''}`); renderHeadcounts(main);
   };
 }
 
@@ -1308,7 +1487,7 @@ async function renderResources(main) {
 async function renderProfile(main) {
   let prof = {};
   if (!S.offline) { const { data } = await sb.from('profiles').select('*').eq('email', S.email).maybeSingle(); prof = data || {}; }
-  const remOn = localStorage.getItem(REM_KEY) === '1';
+  const remOn = localStorage.getItem(REM_KEY) === '1' && 'Notification' in window && Notification.permission === 'granted';
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
   main.innerHTML = `<h2 class="page">Mi perfil</h2><p class="sub">${esc(S.email)} · ${esc(roleName(S.role))}</p>
     <form id="pff" class="panel ev-edit" style="padding:12px 16px">

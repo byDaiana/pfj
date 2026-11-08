@@ -229,6 +229,26 @@ textarea.input { resize: vertical; }
 .aud { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 4px 12px; margin-top: 6px; }
 .aud label { display: flex; gap: 6px; align-items: center; }
 
+/* ---------- recordatorios ---------- */
+.rem { padding: 12px 16px; }
+.rem-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rem-h .ti { font-size: 20px; color: var(--accent); }
+.rem-l { display: grid; gap: 6px; margin-top: 10px; }
+.rem-l > div { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; background: var(--info-bg); border-radius: 8px; }
+.rem-t { font-weight: 800; color: var(--accent); min-width: 44px; font-variant-numeric: tabular-nums; }
+
+/* ---------- compañías y asistencia ---------- */
+.as-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.as-list { display: grid; gap: 4px; max-height: 50vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--field); }
+.as-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.as-item:hover { background: var(--hover); }
+.as-item input { width: 18px; height: 18px; flex-shrink: 0; }
+.as-item > span { flex: 1; }
+.att .as-item .ti { font-size: 20px; color: var(--muted); }
+.att .as-item.on { background: var(--yes-bg); }
+.att .as-item.on .ti { color: var(--yes); }
+.co-m { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+
 /* ---------- menú Más ---------- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .tile { display: grid; gap: 4px; justify-items: start; text-align: left; padding: 16px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer; }

@@ -547,3 +547,18 @@ html[data-font="merriweather"] { --font: "Merriweather", Georgia, serif; }
 #splash img { width: min(46vw, 220px); border-radius: 50%; box-shadow: 0 0 60px rgba(56,189,248,.45); animation: splashPulse 1.6s ease-in-out infinite; }
 @keyframes splashPulse { 50% { box-shadow: 0 0 90px rgba(56,189,248,.7); transform: scale(1.03); } }
 #app:not(:empty) ~ #splash { opacity: 0; visibility: hidden; transition: opacity .35s, visibility .35s; }
+/* Recuento: lista de asistencia (nombre al medio, estado a la derecha) */
+.att-prog { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 2px 0 10px; }
+.att-prog i { display: block; height: 100%; background: var(--yes); transition: width .25s; }
+.as-list.att { display: grid; gap: 6px; }
+.ev-edit .att-row, .att-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); cursor: pointer; color: var(--text); font-weight: 400; font-size: 14px; transition: background .15s, border-color .15s; }
+.att-row input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+.att-av { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-bg); color: var(--accent); font-weight: 700; font-size: 13px; text-transform: uppercase; }
+.att-nm { flex: 1; min-width: 0; display: grid; }
+.att-nm b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-nm small { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-st { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 99px; font-size: 12px; font-weight: 700; background: var(--hover); color: var(--muted); }
+.att-row.on { background: var(--yes-bg); border-color: color-mix(in srgb, var(--yes) 35%, transparent); }
+.att-row.on .att-av { background: var(--yes); color: #fff; }
+.att-row.on .att-st { background: var(--yes); color: #fff; }
+.att-row:focus-within { outline: 2px solid var(--brand-2); outline-offset: 1px; }

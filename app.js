@@ -84,7 +84,7 @@ function toggleTheme() { UI.theme = isDark() ? 'light' : 'dark'; saveUI(); apply
 applyTheme();
 
 /* ---------- Diseño de la app (lo define la dueña desde el Probador de diseño y se guarda para todos) ---------- */
-const DESIGN_KEY = 'pfj-design2';
+const DESIGN_KEY = 'pfj-design3';
 const DESIGN_DEFAULT = { palette: 'institucional', icons: 'linea', btn: 'redondeado', nav: 'color', cards: 'borde', font: 'opensans', navico: 'rellenos' }; // elegido por Daiana el 8/11/2026
 // Juegos de dibujos para la barra de abajo (orden: inicio, agenda, consejeros, participantes, salud, más, obispos, mapa, accesos).
 const NAV_SETS = {
@@ -332,7 +332,7 @@ async function loadData() {
   S.day1 = ((st.data || []).find((x) => x.key === 'session_day1') || {}).value || null;
   S.vapid = ((st.data || []).find((x) => x.key === 'vapid_public') || {}).value || null;
   if (S.vapid) pushSubscribe(false);
-  const dz = (st.data || []).find((x) => x.key === 'design2');  if (dz && dz.value && !designPreviewing) { try { designSaved = { ...DESIGN_DEFAULT, ...JSON.parse(dz.value) }; localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); applyDesign(designSaved); } catch { /* nada */ } }
+  const dz = (st.data || []).find((x) => x.key === 'design3');  if (dz && dz.value && !designPreviewing) { try { designSaved = { ...DESIGN_DEFAULT, ...JSON.parse(dz.value) }; localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); applyDesign(designSaved); } catch { /* nada */ } }
   // Agenda, avisos y mapa (si la base todavía no tiene esas tablas, la app sigue funcionando)
   const [sc, no, pl] = await Promise.all([
     sb.from('schedule').select('*').order('day').order('sort'),
@@ -1427,7 +1427,7 @@ function renderDesign(main) {
     if (e.target.closest('#dz-reset')) { designDraft = { ...DESIGN_DEFAULT }; return rerender(); }
     if (e.target.closest('#dz-undo')) { designDraft = { ...designSaved }; return rerender(); }
     if (e.target.closest('#dz-save')) {
-      const { error } = await sb.from('settings').upsert({ key: 'design2', value: JSON.stringify(designDraft) });
+      const { error } = await sb.from('settings').upsert({ key: 'design3', value: JSON.stringify(designDraft) });
       if (error) return toast(errMsg(error));
       designSaved = { ...designDraft }; designPreviewing = false;
       try { localStorage.setItem(DESIGN_KEY, JSON.stringify(designSaved)); } catch { /* nada */ }
@@ -1767,7 +1767,8 @@ async function renderHeadcounts(main) {
       return;
     }
     box.innerHTML = `<div class="as-bar"><b id="hc-count">${hcState.present.size} de ${r.length} presentes</b><span style="flex:1"></span><button type="button" class="btn btn-sm" id="hc-all">Todos presentes</button><button type="button" class="btn btn-sm" id="hc-none">Ninguno</button></div>
-      <div class="as-list att">${r.map((p) => `<label class="as-item ${hcState.present.has(p.id) ? 'on' : ''}"><input type="checkbox" value="${esc(p.id)}" ${hcState.present.has(p.id) ? 'checked' : ''}><span><b>${esc(p.last)}, ${esc(p.first)}</b></span><i class="ti ti-${hcState.present.has(p.id) ? 'circle-check' : 'circle-dashed'}"></i></label>`).join('')}</div>`;
+      <div class="att-prog"><i style="width:${r.length ? Math.round((hcState.present.size / r.length) * 100) : 0}%"></i></div>
+      <div class="as-list att">${r.map((p) => { const on = hcState.present.has(p.id); return `<label class="att-row ${on ? 'on' : ''}"><input type="checkbox" value="${esc(p.id)}" ${on ? 'checked' : ''}><span class="att-av">${esc(((p.first || '')[0] || '') + ((p.last || '')[0] || ''))}</span><span class="att-nm"><b>${esc(p.last)}, ${esc(p.first)}</b>${p.ward ? `<small>${esc(p.ward)}</small>` : ''}</span><span class="att-st"><i class="ti ti-${on ? 'check' : 'minus'}"></i>${on ? 'Presente' : 'Falta'}</span></label>`; }).join('')}</div>`;
     $('#hc-all', box).onclick = () => { r.forEach((p) => hcState.present.add(p.id)); drawRoster(); };
     $('#hc-none', box).onclick = () => { hcState.present.clear(); drawRoster(); };
     box.querySelector('.att').onchange = (e) => { const cb = e.target; if (cb.checked) hcState.present.add(cb.value); else hcState.present.delete(cb.value); drawRoster(); };

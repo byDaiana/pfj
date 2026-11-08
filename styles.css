@@ -270,3 +270,34 @@ textarea.input { resize: vertical; }
   .group.closed .group-b { display: grid; }
   main { padding: 0; }
 }
+
+/* ---------- títulos de la agenda ---------- */
+.ev .grow { min-width: 0; }
+.ev-title b { display: block; overflow-wrap: anywhere; }
+.ev-title span { display: block; font-size: 13px; color: var(--muted); padding-left: 10px; position: relative; overflow-wrap: anywhere; }
+.ev-title span::before { content: '·'; position: absolute; left: 2px; }
+
+/* ---------- menú Más (lista agrupada) ---------- */
+.backbtn { display: inline-flex; align-items: center; gap: 2px; background: none; border: 0; color: var(--accent); font-weight: 700; font-size: 15px; padding: 6px 0; margin-bottom: 4px; cursor: pointer; }
+.menu-sec { margin-bottom: 18px; }
+.menu-t { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 4px 6px; }
+.menu { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.menu-i { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; background: none; border: 0; border-top: 1px solid var(--line); text-align: left; cursor: pointer; }
+.menu-i:first-child { border-top: 0; }
+.menu-i:hover { background: var(--hover); }
+.menu-ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--accent-bg); color: var(--accent); flex-shrink: 0; }
+.menu-ic .ti { font-size: 20px; }
+.menu-tx { flex: 1; min-width: 0; display: grid; }
+.menu-tx b { font-size: 15px; font-weight: 600; }
+.menu-tx span { font-size: 13px; color: var(--muted); }
+.menu-ch { color: var(--muted); font-size: 18px; }
+
+/* ---------- registro de salud ---------- */
+.hl-row { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.hl-row.pend { opacity: .85; }
+.hl-act { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* ---------- pantalla de recordatorios ---------- */
+.rem-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.rem-row:first-of-type { border-top: 0; }
+.rem-row.soon { background: var(--warn-bg); margin: 0 -16px; padding: 10px 16px; }

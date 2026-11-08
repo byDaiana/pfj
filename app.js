@@ -33,7 +33,7 @@ const TABS_BY_ROLE = {
   matrimonio_director: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
   coord_auxiliar: ['inicio', 'agenda', 'consejeros', 'participantes', 'mas'],
   coord_bienestar: ['inicio', 'agenda', 'consejeros', 'participantes', 'salud', 'mas'],
-  consejero: ['agenda', 'participantes', 'mas'],
+  consejero: ['agenda', 'participantes', 'salud', 'mas'],
   obispo: ['consejeros', 'participantes', 'mas'],
   enfermeria: ['agenda', 'salud', 'consejeros', 'participantes', 'mas'],
   cocina: ['agenda', 'salud', 'mas']
@@ -45,6 +45,7 @@ const can = {
   // Avisos: dueña, coordinadores y matrimonio director.
   postNotice: (r) => ['dueno', 'coordinador', 'matrimonio_director'].includes(r),
   health: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_bienestar', 'enfermeria']),
+  healthLog: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_bienestar', 'enfermeria', 'consejero']),  owner: (r) => r === 'dueno',
   headcount: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar', 'consejero']),
   seeAllHeadcounts: inRoles(['dueno', 'coordinador', 'matrimonio_director', 'coord_auxiliar', 'coord_bienestar']),
   directory: inRoles(['dueno', 'coordinador', 'matrimonio_director']),
@@ -283,7 +284,7 @@ async function boot() {
     await loadMe();
     if (/access_token|error_description|[?&]code=/.test(location.href)) history.replaceState(null, '', APP_URL);
     if (linkFailed && !S.email) toast('El enlace venció o ya se usó. Pedí uno nuevo.');
-    if (S.role) { await loadData(); S.offline = false; startLive(); startReminders(); }
+    if (S.role) { await loadData(); S.offline = false; UI.tab = null; UI.sub = null; startLive(); startReminders(); } // al entrar, siempre la primera pantalla (Inicio)
   } catch (e) {
     console.error(e);
     // Sin conexión: mostrar la última agenda guardada en este celular (sin datos de personas).
@@ -554,7 +555,7 @@ function renderShell(app) {
   $('#ref').onclick = () => refresh();
   if ($('#goreq')) $('#goreq').onclick = () => { UI.tab = 'accesos'; saveUI(); render(); };
   if ($('#acc')) $('#acc').onclick = () => { UI.tab = UI.tab === 'accesos' ? tabs[0] : 'accesos'; saveUI(); render(); window.scrollTo(0, 0); };
-  app.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { UI.tab = b.dataset.tab; saveUI(); render(); window.scrollTo(0, 0); }));
+  app.querySelectorAll('.tabs button').forEach((b) => (b.onclick = () => { UI.tab = b.dataset.tab; UI.sub = null; saveUI(); render(); window.scrollTo(0, 0); }));
   const main = $('#main');
   if (UI.tab === 'accesos') return renderAccess(main);
   if (UI.tab === 'agenda') return renderAgenda(main);
@@ -711,7 +712,7 @@ function contactLinks(phone, email) {
 function personDetails(p) {
   const f = (k, v, hl) => (has(v) ? `<div><div class="k">${k}</div><div class="${hl ? 'hl' : ''}">${esc(v)}</div></div>` : '');
   const out = [];
-  if (has(p.phone) || has(p.email)) out.push(`<div><div class="k">Contacto</div>${esc(p.phone || '')}<br>${esc(p.email || '')}${contactLinks(p.phone, p.email)}</div>`);
+  if (has(p.phone) || has(p.email)) out.push(`<div><div class="k">Contacto personal del ${p.tipo === 'Consejero' ? 'consejero' : 'participante'}</div>${esc(p.phone || '')}<br>${esc(p.email || '')}${contactLinks(p.phone, p.email)}</div>`);
   out.push(f('Nombre preferido', p.pref), f('Estaca / Distrito', p.stake));
   if (has(p.bishop)) out.push(f('Obispo / Presidente', `${p.bishop}${p.bishop_e ? ' · ' + p.bishop_e : ''}`));
   out.push(f('Información médica', p.med, p.med_flag), f('Información alimentaria', p.food, p.food_flag));
@@ -798,53 +799,122 @@ function byTipo(list, rowFn, wrapClass) {
 /* ---------- Salud / Dietas ---------- */
 function renderHealth(main) {
   const kitchen = S.role === 'cocina';
-  const list = sorted(S.people.filter((p) => (kitchen ? p.food_flag : p.med_flag || p.food_flag)));
-  const filters = kitchen ? [['todos', 'Todos']] : [['todos', 'Todos'], ['med', 'Médico'], ['food', 'Dieta']];
+  const logger = can.healthLog(S.role), owner = can.owner(S.role);
+  const flagged = (p) => (kitchen ? p.food_flag : p.med_flag || p.food_flag);
+  const filters = kitchen ? [['todos', 'Todos']] : [['todos', 'Con indicaciones'], ['med', 'Médico'], ['food', 'Dieta'], ...(logger ? [['all', 'Todas las personas']] : [])];
   if (!filters.some(([k]) => k === healthState.filter)) healthState.filter = 'todos';
+  const nFlag = S.people.filter(flagged).length;
   main.innerHTML = `
     <h2 class="page">${kitchen ? 'Dietas especiales' : 'Salud y alimentación'}</h2>
-    <p class="sub">${plural(list.length, 'persona', 'personas')} ${kitchen ? 'con indicaciones de alimentación.' : 'con información médica o alimentaria a tener en cuenta.'}</p>
+    <p class="sub">${plural(nFlag, 'persona', 'personas')} ${kitchen ? 'con indicaciones de alimentación.' : 'con información médica o alimentaria a tener en cuenta.'}</p>
+    ${owner ? '<div id="hl-pend"></div>' : ''}
     <div class="toolbar">
       <input class="input" id="hq" type="search" placeholder="Buscar nombre, alergia, medicamento, comida…" value="${esc(healthState.q)}">
       <button class="btn" id="prn"><i class="ti ti-printer"></i> Imprimir</button>
     </div>
     ${filters.length > 1 ? `<div class="toolbar chips" id="hf">${filters.map(([k, l]) => `<button class="chip ${healthState.filter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('')}</div>` : ''}
+    ${logger ? `<div class="panel" style="padding:12px 16px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;flex:1"><i class="ti ti-user-plus"></i> Personas fuera de la lista</h3><button class="btn btn-sm" id="hl-add"><i class="ti ti-plus"></i> Agregar</button></div>
+      <p class="note" style="margin:4px 0 0">Para registrar a alguien que no aparece en la lista (personal, visitas u otros casos).</p>
+      <div id="hl-other"></div></div>` : ''}
     <div id="hlist"></div>`;
+
+  const logRow = (h) => `<div class="hl-row ${h.delete_requested_at ? 'pend' : ''}">
+      <div><b>${esc(h.kind)}</b> · ${fmtWhen(h.created_at)}${h.person_name ? ' · <b>' + esc(h.person_name) + '</b>' : ''}<br>${esc(h.note || '')} <span class="note">(${esc(h.created_by || '')})</span>
+        ${h.delete_requested_at ? `<br><span class="badge pend">Eliminación pendiente</span> <span class="note">pedida por ${esc(h.delete_requested_by || '')}</span>` : ''}</div>
+      <div class="hl-act">${owner ? `<button class="linkbtn" data-hledit="${h.id}" aria-label="Editar"><i class="ti ti-pencil"></i></button><button class="linkbtn" data-hldel="${h.id}" aria-label="Borrar"><i class="ti ti-trash"></i></button>`
+        : !h.delete_requested_at ? `<button class="linkbtn" data-hlreq="${h.id}" title="Pedir que se borre" aria-label="Pedir que se borre"><i class="ti ti-trash"></i></button>` : ''}</div></div>`;
+  const logForm = (withName) => `<form class="hlf ev-edit" style="margin:8px 0">
+      ${withName ? '<label>Nombre de la persona<input class="input" name="pn" maxlength="80" required placeholder="Ej.: Juan Pérez (cocina)"></label>' : ''}
+      <div class="form-inline" style="margin:0"><select class="input" name="k" style="flex:0 1 150px"><option>Medicación</option><option>Consulta</option></select>
+        <input class="input" name="n" maxlength="500" placeholder="Ej.: Allegra 120 mg 8:00 · dolor de cabeza" required>
+        <button class="btn btn-sm btn-primary">Registrar</button></div></form>`;
+
   const draw = () => {
     const q = norm(healthState.q);
-    const l = list.filter((p) => (healthState.filter === 'med' ? p.med_flag : healthState.filter === 'food' ? p.food_flag : true))
+    const l = S.people.filter((p) => (healthState.filter === 'all' ? true : healthState.filter === 'med' ? p.med_flag : healthState.filter === 'food' ? p.food_flag : flagged(p)))
       .filter((p) => !q || norm(`${p.first} ${p.last} ${p.pref || ''} ${p.ward} ${p.prov} ${p.med_flag ? p.med : ''} ${p.food_flag ? p.food : ''}`).includes(q));
-    $('#hlist', main).innerHTML = byTipo(l, (p) => `
+    $('#hlist', main).innerHTML = byTipo(sorted(l), (p) => `
       <div class="card"><div class="details" style="border-top:0">
         <div><div class="k">${esc(p.prov)}</div><b>${esc(p.last)}, ${esc(p.first)}</b>${has(p.age) ? `<div class="note">${esc(p.age)} años · ${esc(p.ward || '')}</div>` : ''}</div>
         ${p.med_flag && has(p.med) ? `<div><div class="k">Médico</div><div class="hl">${esc(p.med)}</div></div>` : ''}
         ${p.food_flag && has(p.food) ? `<div><div class="k">Alimentación</div><div class="hl">${esc(p.food)}</div></div>` : ''}
-        ${has(p.c1n) || has(p.c1t) ? `<div><div class="k">Emergencia</div>${esc(p.c1n || '')} · ${esc(p.c1t || '')}${contactLinks(p.c1t, '')}</div>` : ''}
-        ${can.health(S.role) ? `<div style="grid-column:1/-1"><button class="btn btn-sm" data-hl="${esc(p.id)}"><i class="ti ti-notes"></i> Registro de salud</button><div data-hlbox="${esc(p.id)}"></div></div>` : ''}
+        ${has(p.c1n) || has(p.c1t) ? `<div><div class="k">Contacto de emergencia</div>${esc(p.c1n || '')} · ${esc(p.c1t || '')}${contactLinks(p.c1t, '')}</div>` : ''}
+        ${logger ? `<div style="grid-column:1/-1"><button class="btn btn-sm" data-hl="${esc(p.id)}"><i class="ti ti-notes"></i> Registro de salud</button><div data-hlbox="${esc(p.id)}"></div></div>` : ''}
       </div></div>`, 'list') || `<div class="empty"><div class="big"><i class="ti ti-search"></i></div><p>No hay resultados${q ? ` para «${esc(healthState.q)}»` : ''}.</p></div>`;
   };
-  draw();
-  // Registro de medicación y consultas (coordinación, bienestar y enfermería)
-  $('#hlist', main).onclick = async (e) => {
-    const b = e.target.closest('[data-hl]'); if (!b) return;
-    const pid = b.dataset.hl, box = main.querySelector(`[data-hlbox="${CSS.escape(pid)}"]`);
-    if (box.innerHTML) { box.innerHTML = ''; return; }
+  const openPerson = async (pid, box) => {
     const { data, error } = await sb.from('health_logs').select('*').eq('person_id', pid).order('created_at', { ascending: false });
-    if (dbMissing(error)) { box.innerHTML = '<p class="note">Falta activar el registro de salud (SQL 07).</p>'; return; }
-    box.innerHTML = `<form id="hlf" class="form-inline" style="margin:8px 0">
-        <select class="input" id="hl-k" style="flex:0 1 150px"><option>Medicación</option><option>Consulta</option></select>
-        <input class="input" id="hl-n" maxlength="500" placeholder="Ej.: Allegra 120 mg 8:00 · dolor de cabeza" required>
-        <button class="btn btn-sm btn-primary">Registrar</button></form>
-      <div class="note">${(data || []).map((h) => `<b>${esc(h.kind)}</b> · ${fmtWhen(h.created_at)} · ${esc(h.note || '')} <span style="opacity:.8">(${esc(h.created_by || '')})</span>`).join('<br>') || 'Sin registros todavía.'}</div>`;
-    $('#hlf', box).onsubmit = async (ev) => {
-      ev.preventDefault();
-      const { error: err } = await sb.from('health_logs').insert({ person_id: pid, kind: $('#hl-k', box).value, note: clean($('#hl-n', box).value), created_by: S.email });
+    if (dbMissing(error)) { box.innerHTML = '<p class="note">Falta activar el registro de salud.</p>'; return; }
+    box.innerHTML = logForm(false) + `<div>${(data || []).map(logRow).join('') || '<p class="note">Sin registros todavía.</p>'}</div>`;
+    box.querySelector('.hlf').onsubmit = async (ev) => {
+      ev.preventDefault(); const f = ev.target;
+      const { error: err } = await sb.from('health_logs').insert({ person_id: pid, kind: f.k.value, note: clean(f.n.value), created_by: S.email });
       if (err) return toast(errMsg(err));
-      box.innerHTML = ''; b.click(); toast('Registrado');
+      toast('Registrado'); openPerson(pid, box);
     };
   };
+  const drawOthers = async () => {
+    const box = $('#hl-other', main); if (!box) return;
+    const { data, error } = await sb.from('health_logs').select('*').is('person_id', null).order('created_at', { ascending: false }).limit(100);
+    if (dbMissing(error) || (error && /person_name/.test(error.message))) { box.innerHTML = '<p class="note">Falta activar esta parte (SQL 10).</p>'; return; }
+    box.innerHTML = (data || []).map(logRow).join('');
+  };
+  const drawPending = async () => {
+    const box = $('#hl-pend', main); if (!box) return;
+    const { data } = await sb.from('health_logs').select('*').not('delete_requested_at', 'is', null).order('delete_requested_at');
+    const list = data || [];
+    box.innerHTML = list.length ? `<div class="panel" style="padding:12px 16px"><h3 style="margin:0 0 8px"><i class="ti ti-trash"></i> Eliminaciones pendientes (${list.length})</h3>
+      ${list.map((h) => { const p = S.people.find((x) => x.id === h.person_id); return `<div class="hl-row pend"><div><b>${esc(p ? `${p.first} ${p.last}` : h.person_name || '')}</b> · ${esc(h.kind)} · ${fmtWhen(h.created_at)}<br>${esc(h.note || '')}<br><span class="note">Pedida por ${esc(h.delete_requested_by || '')}</span></div>
+        <div class="hl-act"><button class="btn btn-sm btn-danger" data-hldel="${h.id}">Aceptar</button><button class="btn btn-sm" data-hlkeep="${h.id}">Rechazar</button></div></div>`; }).join('')}</div>` : '';
+  };
+  draw(); drawOthers(); drawPending();
+
+  main.onclick = async (e) => {
+    const t = (sel) => e.target.closest(sel);
+    let b;
+    if ((b = t('[data-hl]'))) { const box = main.querySelector(`[data-hlbox="${CSS.escape(b.dataset.hl)}"]`); if (box.innerHTML) box.innerHTML = ''; else openPerson(b.dataset.hl, box); return; }
+    if ((b = t('#hl-add'))) {
+      const box = $('#hl-other', main);
+      if (box.querySelector('.hlf')) return;
+      box.insertAdjacentHTML('afterbegin', logForm(true));
+      box.querySelector('.hlf').onsubmit = async (ev) => {
+        ev.preventDefault(); const f = ev.target;
+        const { error: err } = await sb.from('health_logs').insert({ person_id: null, person_name: clean(f.pn.value), kind: f.k.value, note: clean(f.n.value), created_by: S.email });
+        if (err) return toast(errMsg(err));
+        toast('Registrado'); drawOthers();
+      };
+      return;
+    }
+    const refreshAll = () => { draw(); drawOthers(); drawPending(); };
+    if ((b = t('[data-hlreq]'))) {
+      if (!confirm('¿Pedir que se borre este registro? La dueña tiene que aceptarlo.')) return;
+      const { error: err } = await sb.rpc('request_health_delete', { log_id: +b.dataset.hlreq });
+      if (err) return toast(errMsg(err));
+      toast('Pedido enviado: queda pendiente hasta que la dueña lo acepte'); refreshAll(); return;
+    }
+    if ((b = t('[data-hldel]'))) {
+      if (!confirm('¿Borrar este registro de salud? No se puede deshacer.')) return;
+      const { error: err } = await sb.from('health_logs').delete().eq('id', b.dataset.hldel);
+      if (err) return toast(errMsg(err));
+      toast('Registro borrado'); refreshAll(); return;
+    }
+    if ((b = t('[data-hlkeep]'))) {
+      const { error: err } = await sb.from('health_logs').update({ delete_requested_by: null, delete_requested_at: null }).eq('id', b.dataset.hlkeep);
+      if (err) return toast(errMsg(err));
+      toast('Se mantiene el registro'); refreshAll(); return;
+    }
+    if ((b = t('[data-hledit]'))) {
+      const { data } = await sb.from('health_logs').select('note').eq('id', b.dataset.hledit).single();
+      const v = prompt('Editar la nota del registro:', data?.note || '');
+      if (v === null) return;
+      const { error: err } = await sb.from('health_logs').update({ note: clean(v) }).eq('id', b.dataset.hledit);
+      if (err) return toast(errMsg(err));
+      toast('Registro actualizado'); refreshAll();
+    }
+  };
   $('#hq', main).oninput = (e) => { healthState.q = e.target.value; draw(); };
-  if ($('#hf', main)) $('#hf', main).onclick = (e) => { const b = e.target.closest('[data-f]'); if (!b) return; healthState.filter = b.dataset.f; main.querySelectorAll('#hf .chip').forEach((c) => c.classList.toggle('on', c === b)); draw(); };
+  if ($('#hf', main)) $('#hf', main).onclick = (e) => { const b = e.target.closest('[data-f]'); if (!b) return; e.stopPropagation(); healthState.filter = b.dataset.f; main.querySelectorAll('#hf .chip').forEach((c) => c.classList.toggle('on', c === b)); draw(); };
   $('#prn').onclick = () => window.print();
 }
 const healthState = { q: '', filter: 'todos' };
@@ -881,10 +951,16 @@ function nowNextCard() {
   const cur = list.filter((r) => toMin(r.start_time) <= nowMin && nowMin < (toMin(r.end_time) ?? toMin(r.start_time) + 15));
   const next = list.find((r) => toMin(r.start_time) > nowMin);
   if (!cur.length && !next) return '';
-  const item = (r, label, cls) => `<div class="nn-item ${cls}"><div class="nn-k">${label}</div><b>${esc(r.title)}</b><div class="note">${esc(r.start_time)}${r.end_time ? '–' + esc(r.end_time) : ''}${r.place ? ' · <i class="ti ti-map-pin"></i> ' + esc(r.place) : ''}${myCol && r[myCol] ? ' · Vos: ' + esc(r[myCol]) : ''}</div></div>`;
+  const item = (r, label, cls) => `<div class="nn-item ${cls}"><div class="nn-k">${label}</div><b>${esc(shortTitle(r.title))}</b><div class="note">${esc(r.start_time)}${r.end_time ? '–' + esc(r.end_time) : ''}${r.place ? ' · <i class="ti ti-map-pin"></i> ' + esc(r.place) : ''}${myCol && r[myCol] ? ' · Vos: ' + esc(r[myCol]) : ''}</div></div>`;
   return `<div class="panel nn">${cur.map((r) => item(r, 'Ahora', 'now')).join('')}${next ? item(next, `Lo que sigue · en ${toMin(next.start_time) - nowMin} min`, '') : ''}</div>`;
 }
 const ROLE_OPTIONS = () => Object.entries(ROLES);
+/* Título de actividad prolijo: la primera parte en negrita y las demás («A | B | C») como renglones secundarios. */
+function titleHtml(t) {
+  const parts = String(t || '').split(/\s*\|\s*/).filter(Boolean);
+  return `<div class="ev-title"><b>${esc(parts[0] || '')}</b>${parts.slice(1).map((x) => `<span>${esc(x)}</span>`).join('')}</div>`;
+}
+const shortTitle = (t) => String(t || '').split(/\s*\|\s*/).filter(Boolean).join(' · ');
 
 /* Panel de recordatorios: estado de la campanita y las próximas actividades de hoy. */
 function remindersPanel() {
@@ -898,7 +974,7 @@ function remindersPanel() {
   return `<div class="panel rem">
     <div class="rem-h"><i class="ti ti-${on ? 'bell-ringing' : 'bell-off'}"></i><b>Recordatorios</b><span class="badge ${on ? 'ok' : ''}">${on ? 'Activados' : 'Desactivados'}</span><span style="flex:1"></span>
       <button class="btn btn-sm ${on ? '' : 'btn-primary'}" data-remtoggle>${on ? 'Desactivar' : 'Activar'}</button></div>
-    ${next.length ? `<div class="rem-l">${next.map((r) => `<div><span class="rem-t">${esc(r.start_time)}</span><span class="grow">${esc(r.title)}${r.place ? ` <span class="note">· ${esc(r.place)}</span>` : ''}</span><span class="note">${inMin(r)}</span></div>`).join('')}</div>`
+    ${next.length ? `<div class="rem-l">${next.map((r) => `<div><span class="rem-t">${esc(r.start_time)}</span><span class="grow">${esc(shortTitle(r.title))}${r.place ? ` <span class="note">· ${esc(r.place)}</span>` : ''}</span><span class="note">${inMin(r)}</span></div>`).join('')}</div>`
       : `<p class="note" style="margin:6px 0 0">${today === null ? 'Los recordatorios empiezan cuando arranque la conferencia.' : 'No quedan actividades por hoy.'}</p>`}
     <p class="note" style="margin:6px 0 0">${on ? 'Te avisamos 10 minutos antes' + (myCol ? ' de lo que te toca' : '') + '.' : 'Activalos para recibir un aviso 10 minutos antes de cada actividad.'}</p>
   </div>`;
@@ -1023,7 +1099,7 @@ function renderAgenda(main) {
         return `<div class="row-item ev ${isNow ? 'now' : ''}" data-ev="${r.id}">
           <div class="ev-time">${esc(r.start_time || '—')}${r.end_time ? `<br><span class="note">${esc(r.end_time)}</span>` : ''}</div>
           <div class="grow">
-            <b>${esc(r.title)}</b>${isNow ? ' <span class="badge ok">Ahora</span>' : ''}${r.changed_at && Date.now() - new Date(r.changed_at) < 86400000 ? ' <span class="badge pend">Cambió</span>' : ''}
+            ${titleHtml(r.title)}${isNow ? ' <span class="badge ok">Ahora</span>' : ''}${r.changed_at && Date.now() - new Date(r.changed_at) < 86400000 ? ' <span class="badge pend">Cambió</span>' : ''}
             ${r.place ? `<div class="note"><i class="ti ti-map-pin"></i> ${esc(r.place)}</div>` : ''}
             ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}
             ${myCol && r[myCol] && r[myCol] !== '—' ? `<div class="badges"><span class="badge ${/^Dirigen|^Enseñan/.test(r[myCol]) ? 'pend' : ''}">Vos: ${esc(r[myCol])}</span></div>` : ''}
@@ -1184,28 +1260,63 @@ async function renderMap(main) {
 }
 
 /* ---------- Más: menú de secciones ---------- */
-const MORE = [
-  { id: 'companias', label: 'Compañías', ico: 'users-group', desc: 'Grupos de participantes con sus consejeros', show: (r) => can.companies(r) },
-  { id: 'recuentos', label: 'Recuentos', ico: 'clipboard-check', desc: 'Presentes en cada recuento', show: (r) => can.headcount(r) },
-  { id: 'incidentes', label: 'Incidentes', ico: 'alert-triangle', desc: 'Avisar un problema de salud, conducta o seguridad', show: () => true },
-  { id: 'directorio', label: 'Directorio', ico: 'address-book', desc: 'Quién es quién en el personal', show: (r) => can.directory(r) },
-  { id: 'mapa', label: 'Mapa', ico: 'map-2', desc: 'Lugares del colegio', show: () => true },
-  { id: 'obispos', label: 'Obispos', ico: 'mail', desc: 'Inscripciones por unidad', show: (r) => can.bishopMark(r) },
-  { id: 'recursos', label: 'Recursos', ico: 'books', desc: 'Manuales, videos, himnos y juegos', show: () => true },
-  { id: 'perfil', label: 'Mi perfil', ico: 'user-circle', desc: 'Tu nombre, teléfono y recordatorios', show: () => true }
+const MORE_SECTIONS = [
+  { title: 'Durante la conferencia', items: [
+    { id: 'recordatorios', label: 'Recordatorios', ico: 'bell-ringing', desc: 'Próximas actividades y avisos', show: (r) => r !== 'obispo' },
+    { id: 'recuentos', label: 'Recuentos', ico: 'clipboard-check', desc: 'Asistencia de cada recuento', show: (r) => can.headcount(r) },
+    { id: 'incidentes', label: 'Incidentes', ico: 'alert-triangle', desc: 'Salud, conducta o seguridad', show: () => true }
+  ] },
+  { title: 'Organización', items: [
+    { id: 'companias', label: 'Compañías', ico: 'users-group', desc: 'Participantes y consejeros por grupo', show: (r) => can.companies(r) },
+    { id: 'directorio', label: 'Directorio', ico: 'address-book', desc: 'Contacto del personal', show: (r) => can.directory(r) },
+    { id: 'obispos', label: 'Obispos', ico: 'mail', desc: 'Inscripciones por unidad', show: (r) => can.bishopMark(r) }
+  ] },
+  { title: 'Información', items: [
+    { id: 'mapa', label: 'Mapa', ico: 'map-2', desc: 'Lugares del colegio', show: () => true },
+    { id: 'recursos', label: 'Recursos', ico: 'books', desc: 'Manuales, videos, himnos y juegos', show: () => true }
+  ] },
+  { title: 'Cuenta', items: [
+    { id: 'perfil', label: 'Mi perfil', ico: 'user-circle', desc: 'Nombre, teléfono y notificaciones', show: () => true }
+  ] }
 ];
+const MORE = MORE_SECTIONS.flatMap((s) => s.items);
 function renderMore(main) {
   const items = MORE.filter((m) => m.show(S.role));
   if (UI.sub && items.some((m) => m.id === UI.sub)) {
     const m = items.find((x) => x.id === UI.sub);
-    main.innerHTML = `<button class="linkbtn" id="back" style="margin:0 0 6px -6px"><i class="ti ti-arrow-left"></i> Más</button><div id="sub"></div>`;
-    $('#back', main).onclick = () => { UI.sub = null; saveUI(); render(); };
+    main.innerHTML = `<button class="backbtn" id="back"><i class="ti ti-chevron-left"></i> Más</button><div id="sub"></div>`;
+    $('#back', main).onclick = () => { UI.sub = null; saveUI(); render(); window.scrollTo(0, 0); };
     const sub = $('#sub', main);
-    if (S.offline && m.id !== 'mapa' && m.id !== 'perfil') { sub.innerHTML = '<div class="empty"><p>Esta sección necesita conexión.</p></div>'; return; }
-    return ({ companias: renderCompanies, recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile }[m.id])(sub);
+    if (S.offline && !['mapa', 'perfil', 'recordatorios'].includes(m.id)) { sub.innerHTML = '<div class="empty"><p>Esta sección necesita conexión.</p></div>'; return; }
+    return ({ companias: renderCompanies, recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile, recordatorios: renderRemindersPage }[m.id])(sub);
   }
-  main.innerHTML = `<h2 class="page">Más</h2><div class="tiles">${items.map((m) => `<button class="tile" data-sub="${m.id}"><i class="ti ti-${m.ico}"></i><b>${m.label}</b><span class="note">${m.desc}</span></button>`).join('')}</div>`;
-  main.querySelector('.tiles').onclick = (e) => { const b = e.target.closest('[data-sub]'); if (!b) return; UI.sub = b.dataset.sub; saveUI(); render(); window.scrollTo(0, 0); };
+  main.innerHTML = `<h2 class="page">Más</h2>` + MORE_SECTIONS.map((s) => {
+    const vis = s.items.filter((m) => m.show(S.role));
+    if (!vis.length) return '';
+    return `<div class="menu-sec"><div class="menu-t">${esc(s.title)}</div><div class="menu">${vis.map((m) => `<button class="menu-i" data-sub="${m.id}">
+      <span class="menu-ic"><i class="ti ti-${m.ico}"></i></span><span class="menu-tx"><b>${m.label}</b><span>${m.desc}</span></span><i class="ti ti-chevron-right menu-ch"></i></button>`).join('')}</div></div>`;
+  }).join('');
+  main.onclick = (e) => { const b = e.target.closest('[data-sub]'); if (!b) return; UI.sub = b.dataset.sub; saveUI(); render(); window.scrollTo(0, 0); };
+}
+
+/* Pantalla de recordatorios: estado y todo lo que viene, hoy y mañana. */
+function renderRemindersPage(main) {
+  const today = todayDayNumber();
+  const on = localStorage.getItem(REM_KEY) === '1' && 'Notification' in window && Notification.permission === 'granted';
+  const myCol = ROLE_COL[S.role];
+  const now = new Date(), nm = now.getHours() * 60 + now.getMinutes();
+  const mineOnly = (r) => !myCol || (r[myCol] && r[myCol] !== '—');
+  const dayList = (d, fromNow) => S.schedule.filter((r) => r.day === d && toMin(r.start_time) !== null && mineOnly(r) && (!fromNow || toMin(r.start_time) >= nm - 5))
+    .sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
+  const row = (r, d) => { const diff = d === today ? toMin(r.start_time) - nm : null;
+    return `<div class="rem-row ${diff !== null && diff >= 0 && diff <= 10 ? 'soon' : ''}"><span class="rem-t">${esc(r.start_time)}</span><span class="grow"><b>${esc(shortTitle(r.title))}</b>${r.place ? `<br><span class="note"><i class="ti ti-map-pin"></i> ${esc(r.place)}</span>` : ''}${myCol && r[myCol] ? `<br><span class="note">Vos: ${esc(r[myCol])}</span>` : ''}</span>${diff !== null && diff >= 0 ? `<span class="badge ${diff <= 10 ? 'pend' : ''}">${diff < 60 ? `en ${diff} min` : `en ${Math.floor(diff / 60)} h`}</span>` : ''}</div>`; };
+  const todayL = today !== null ? dayList(today, true) : [], tomL = today !== null ? dayList(today + 1, false) : [];
+  main.innerHTML = `<h2 class="page">Recordatorios</h2>
+    <div class="panel rem"><div class="rem-h"><i class="ti ti-${on ? 'bell-ringing' : 'bell-off'}"></i><b>${on ? 'Activados' : 'Desactivados'}</b><span style="flex:1"></span><button class="btn btn-sm ${on ? '' : 'btn-primary'}" data-remtoggle>${on ? 'Desactivar' : 'Activar'}</button></div>
+      <p class="note" style="margin:6px 0 0">${on ? `Te avisamos 10 minutos antes de cada actividad${myCol ? ' que te toca' : ''} y cuando llega un aviso nuevo.` : 'Activalos para recibir un aviso en el celular 10 minutos antes de cada actividad.'}</p></div>
+    ${today === null ? '<div class="empty"><p>Los recordatorios empiezan cuando se cargue la fecha del Día 1.</p></div>' : `
+    <div class="panel" style="padding:12px 16px"><h3 style="margin:0 0 8px">Hoy · ${esc(dayLabel(today))}</h3>${todayL.map((r) => row(r, today)).join('') || '<p class="note" style="margin:0">No quedan actividades por hoy.</p>'}</div>
+    ${tomL.length ? `<div class="panel" style="padding:12px 16px"><h3 style="margin:0 0 8px">Mañana · ${esc(dayLabel(today + 1))}</h3>${tomL.map((r) => row(r, today + 1)).join('')}</div>` : ''}`}`;
 }
 const dbMissing = (err) => err && /does not exist|schema cache|Could not find/i.test(err.message || '');
 const missingMsg = () => `<div class="empty"><div class="big"><i class="ti ti-database-off"></i></div><p>Esta sección todavía no está activada.${S.role === 'dueno' ? '<br>Falta ejecutar <b>07_funciones_completas.sql</b> en Supabase.' : ''}</p></div>`;
@@ -1333,19 +1444,27 @@ async function renderHeadcounts(main) {
     hcState.sid = best ? best.id : null;
   }
   const comps = S.role === 'consejero' ? S.companies.filter((c) => (S.myCompanies || []).includes(c.id)) : S.companies;
-  if (!comps.some((c) => c.id === hcState.cid)) hcState.cid = comps[0]?.id || null;
+  // Listas para marcar asistencia: compañías (si hay) y, mientras tanto, otras agrupaciones.
+  const groups = comps.map((c) => ({ v: 'c:' + c.id, label: c.name, cid: c.id, people: () => S.people.filter((p) => S.members[p.id] === c.id && p.tipo === 'Participante') }));
+  if (S.role === 'consejero') { if (!groups.length) groups.push({ v: 'mine', label: 'Mis participantes', people: () => S.people.filter((p) => p.tipo === 'Participante') }); }
+  else {
+    groups.push({ v: 'all', label: 'Todos los participantes', people: () => S.people.filter((p) => p.tipo === 'Participante') });
+    PROVINCES.filter((pr) => S.people.some((p) => p.prov === pr && p.tipo === 'Participante')).forEach((pr) => groups.push({ v: 'prov:' + pr, label: 'Participantes de ' + pr, people: () => S.people.filter((p) => p.prov === pr && p.tipo === 'Participante') }));
+  }
+  if (!groups.some((g) => g.v === hcState.grp)) hcState.grp = groups[0]?.v || null;
+  const curGroup = () => groups.find((g) => g.v === hcState.grp);
   let q = sb.from('headcounts').select('*').order('created_at', { ascending: false }).limit(400);
   if (!seeAll) q = q.eq('created_by', S.email);
   const { data, error } = await q;
   if (dbMissing(error)) { main.innerHTML = missingMsg(); return; }
   const list = data || [];
   const days = [...new Set(counts.map((r) => r.day))];
-  const roster = () => S.people.filter((p) => S.members[p.id] === hcState.cid && p.tipo === 'Participante').sort((a, b) => a.last.localeCompare(b.last));
+  const roster = () => (curGroup() ? curGroup().people() : []).sort((a, b) => a.last.localeCompare(b.last));
   main.innerHTML = `<h2 class="page">Recuentos</h2>
     <p class="sub">Elegí el recuento y la compañía, y marcá quién está.</p>
     <form id="hcf" class="panel ev-edit" style="padding:12px 16px">
       <label>Recuento<select class="input" id="hc-s">${counts.length ? days.map((d) => `<optgroup label="${esc(dayLabel(d))}${d === today ? ' · hoy' : ''}">${counts.filter((r) => r.day === d).map((r) => `<option value="${r.id}" ${String(r.id) === String(hcState.sid) ? 'selected' : ''}>${esc(r.start_time || '')} · ${esc(r.title.replace(/\s*\|\s*/g, ' · '))}</option>`).join('')}</optgroup>`).join('') : '<option value="">No hay recuentos en el horario</option>'}</select></label>
-      ${comps.length ? `<label>Compañía<select class="input" id="hc-c">${comps.map((c) => `<option value="${c.id}" ${c.id === hcState.cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
+      ${groups.length ? `<label>${comps.length ? 'Compañía' : 'Lista'}<select class="input" id="hc-c">${groups.map((g) => `<option value="${esc(g.v)}" ${g.v === hcState.grp ? 'selected' : ''}>${esc(g.label)}</option>`).join('')}</select></label>${!comps.length ? '<p class="note" style="margin:-4px 0 0">Cuando estén las compañías, vas a poder elegir tu compañía.</p>' : ''}` : ''}
       <div id="hc-roster"></div>
       <button class="btn btn-primary" style="justify-self:start" ${counts.length ? '' : 'disabled'}><i class="ti ti-check"></i> Enviar recuento</button>
     </form>
@@ -1353,7 +1472,7 @@ async function renderHeadcounts(main) {
 
   const drawRoster = () => {
     const box = $('#hc-roster', main), r = roster();
-    if (!comps.length || !r.length) {
+    if (!r.length) {
       box.innerHTML = `${comps.length ? '<p class="note" style="margin:0">Esta compañía todavía no tiene participantes cargados. Podés cargar el número a mano:</p>' : '<p class="note" style="margin:0">Cuando estén armadas las compañías, acá vas a ver la lista para marcar asistencia. Mientras tanto, cargá el número:</p>'}
         <div class="ev-grid" style="grid-template-columns:1fr 1fr;margin-top:8px"><label>Presentes<input class="input" type="number" min="0" id="hc-p" required></label><label>Esperados<input class="input" type="number" min="0" id="hc-e"></label></div>
         <label style="margin-top:8px">Faltan<input class="input" id="hc-m" maxlength="500"></label>`;
@@ -1366,23 +1485,23 @@ async function renderHeadcounts(main) {
     box.querySelector('.att').onchange = (e) => { const cb = e.target; if (cb.checked) hcState.present.add(cb.value); else hcState.present.delete(cb.value); drawRoster(); };
   };
   drawRoster();
-  if ($('#hc-c', main)) $('#hc-c', main).onchange = (e) => { hcState.cid = +e.target.value; hcState.present.clear(); drawRoster(); };
+  if ($('#hc-c', main)) $('#hc-c', main).onchange = (e) => { hcState.grp = e.target.value; hcState.present.clear(); drawRoster(); };
   $('#hc-s', main).onchange = (e) => { hcState.sid = e.target.value; };
 
-  const groups = {};
-  list.forEach((h) => { const k = h.schedule_id || 'x'; (groups[k] = groups[k] || []).push(h); });
-  $('#hcl', main).innerHTML = Object.keys(groups).length ? Object.entries(groups).map(([k, hs]) => {
+  const byAct = {};
+  list.forEach((h) => { const k = h.schedule_id || 'x'; (byAct[k] = byAct[k] || []).push(h); });
+  $('#hcl', main).innerHTML = Object.keys(byAct).length ? Object.entries(byAct).map(([k, hs]) => {
     const act = S.schedule.find((r) => String(r.id) === String(k));
     const sumP = hs.reduce((a, h) => a + h.present, 0), sumE = hs.reduce((a, h) => a + (h.expected || 0), 0);
     return `<div class="row-item" style="display:block"><b>${esc(act ? `${dayLabel(act.day)} · ${act.start_time || ''} · ${act.title.replace(/\s*\|\s*/g, ' · ')}` : 'Recuento')}</b>
       ${seeAll ? `<div class="badges"><span class="badge ${sumE && sumP < sumE ? 'bad' : 'ok'}">${sumP}${sumE ? ' de ' + sumE : ''} presentes</span><span class="badge">${plural(hs.length, 'compañía', 'compañías')}</span></div>` : ''}
-      <div class="note" style="margin-top:6px">${hs.map((h) => `${h.company_id ? '<b>' + esc(companyName(h.company_id)) + '</b> · ' : ''}${h.present}${h.expected ? '/' + h.expected : ''}${h.missing ? ' · faltan: ' + esc(h.missing) : ''} · ${esc(h.created_by || '')} · ${fmtWhen(h.created_at)}`).join('<br>')}</div></div>`;
+      <div class="note" style="margin-top:6px">${hs.map((h) => `${h.company_id ? '<b>' + esc(companyName(h.company_id)) + '</b> · ' : h.label ? '<b>' + esc(h.label) + '</b> · ' : ''}${h.present}${h.expected ? '/' + h.expected : ''}${h.missing ? ' · faltan: ' + esc(h.missing) : ''} · ${esc(h.created_by || '')} · ${fmtWhen(h.created_at)}`).join('<br>')}</div></div>`;
   }).join('') : '<p class="note" style="margin:0">Todavía no hay recuentos.</p>';
 
   $('#hcf', main).onsubmit = async (e) => {
     e.preventDefault();
-    const r = roster(), useList = comps.length && r.length;
-    const row = { schedule_id: hcState.sid ? +hcState.sid : null, company_id: hcState.cid || null, created_by: S.email };
+    const r = roster(), useList = r.length > 0, g = curGroup();
+    const row = { schedule_id: hcState.sid ? +hcState.sid : null, company_id: g && g.cid ? g.cid : null, label: g && !g.cid ? g.label : null, created_by: S.email };
     if (useList) { row.present = r.filter((p) => hcState.present.has(p.id)).length; row.expected = r.length; row.missing = r.filter((p) => !hcState.present.has(p.id)).map((p) => `${p.first} ${p.last}`).join(', ') || null; }
     else { row.present = +$('#hc-p', main).value; row.expected = $('#hc-e', main).value ? +$('#hc-e', main).value : null; row.missing = clean($('#hc-m', main).value) || null; }
     let { error: err } = await sb.from('headcounts').insert(row);

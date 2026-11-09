@@ -568,3 +568,18 @@ html[data-font="merriweather"] { --font: "Merriweather", Georgia, serif; }
 .day-pick > .ti:first-child { left: 12px; }
 .day-pick > .ti:last-child { right: 12px; color: var(--muted); }
 .day-pick select { appearance: none; -webkit-appearance: none; width: 100%; padding: 12px 40px 12px 40px; font-weight: 700; font-size: 15px; cursor: pointer; }
+
+/* aviso de privacidad y compromiso de confidencialidad */
+.auth-foot { text-align: center; margin-top: 14px; }
+.auth-foot .linkbtn { font-size: 13px; font-weight: 500; }
+.auth-wide { max-width: 520px; }
+.auth-wide h1 { font-size: 20px; margin-bottom: 12px; }
+.legal { font-size: 14px; line-height: 1.5; }
+.legal p { margin: 0 0 10px; }
+.legal ul { margin: 0 0 12px; padding-left: 20px; }
+.legal li { margin-bottom: 6px; }
+.chk { display: flex; gap: 8px; align-items: center; margin: 10px 0 14px; font-weight: 600; }
+.chk input { width: 20px; height: 20px; }
+.auth-card .btn-block + .btn-block { margin-top: 8px; }
+.ov { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.ov-card { background: var(--card); color: var(--text, inherit); border-radius: 16px; box-shadow: var(--shadow); padding: 20px; width: 100%; max-width: 560px; max-height: 88vh; overflow: auto; }

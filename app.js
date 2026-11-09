@@ -366,6 +366,8 @@ async function loadAccess() {
     sb.from('access_requests').select('*').order('created_at')
   ]);
   S.users = u.data || []; S.requests = r.data || [];
+  const pr = await sb.from('profiles').select('email,terms_at');
+  S.terms = Object.fromEntries((pr.error ? [] : pr.data || []).filter((x) => x.terms_at).map((x) => [x.email, x.terms_at]));
 }
 async function refresh(quiet) {
   try { await loadData(); render(); if (!quiet) toast('Datos actualizados'); } catch (e) { toast(errMsg(e)); }
@@ -395,7 +397,7 @@ async function boot() {
     await loadMe();
     if (/access_token|error_description|[?&]code=/.test(location.href)) history.replaceState(null, '', APP_URL);
     if (linkFailed && !S.email) toast('El enlace venció o ya se usó. Pedí uno nuevo.');
-    if (S.role) { await loadData(); S.offline = false; UI.tab = null; UI.sub = null; startLive(); startReminders(); } // al entrar, siempre la primera pantalla (Inicio)
+    if (S.role) { await loadData(); S.offline = false; await checkTerms(); UI.tab = null; UI.sub = null; startLive(); startReminders(); } // al entrar, siempre la primera pantalla (Inicio)
   } catch (e) {
     console.error(e);
     // Sin conexión: mostrar la última agenda guardada en este celular (sin datos de personas).
@@ -473,11 +475,73 @@ function render() {
   const app = $('#app');
   if (!S.email) return renderLogin(app);
   if (!S.role) return renderNoRole(app);
+  if (S.needsTerms) return renderTerms(app);
   renderShell(app);
 }
 
 function authCard(inner) {
-  return `<div class="auth"><div class="auth-card"><img src="icon.svg" alt=""><h1>PFJ Coordinación</h1>${inner}</div></div>`;
+  return `<div class="auth"><div class="auth-card"><img src="icon.svg" alt=""><h1>PFJ Coordinación</h1>${inner}
+    <div class="auth-foot"><button type="button" class="linkbtn" data-priv>Aviso de privacidad</button></div></div></div>`;
+}
+
+/* ---------- aviso de privacidad (Ley 25.326) y compromiso de confidencialidad ---------- */
+function privacyHTML() {
+  const mail = esc(OWNER);
+  return `<div class="legal">
+    <p><b>Responsable de los datos:</b> Daiana, coordinación de PFJ 2027. Contacto: <a href="mailto:${mail}">${mail}</a>.</p>
+    <p><b>Qué datos hay:</b> los de la inscripción a PFJ (nombre, edad, unidad, teléfono, correo, contactos de emergencia e información médica y alimentaria), los registros de salud, incidentes y recuentos del evento, y del personal: correo, nombre, teléfono y función.</p>
+    <p><b>Para qué se usan:</b> solo para organizar PFJ 2027 y cuidar a los participantes. No se usan para otra cosa, no se venden y no se comparten con nadie fuera del personal del evento.</p>
+    <p><b>Quién los ve:</b> cada persona del personal ve solo lo que necesita para su tarea. Por ejemplo, cocina ve dietas pero no datos médicos, y cada consejero ve solo a los jóvenes de su compañía. El acceso lo aprueba la coordinación y se puede quitar en cualquier momento.</p>
+    <p><b>Dónde se guardan:</b> en una base de datos de Supabase con conexión cifrada, cuyos servidores pueden estar fuera de Argentina. Los códigos de ingreso se envían por Gmail.</p>
+    <p><b>Cuánto tiempo:</b> los datos se borran dentro de los 30 días posteriores al fin del evento.</p>
+    <p><b>Tus derechos:</b> podés pedir ver, corregir, actualizar o borrar tus datos escribiendo al correo de contacto. El acceso es gratuito cada seis meses.</p>
+    <p class="note">La AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA, en su carácter de Órgano de Control de la Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales.</p>
+  </div>`;
+}
+const TERMS_HTML = `<div class="legal">
+  <p>Esta app tiene datos personales de jóvenes y adultos, incluidos datos de salud. Al continuar, me comprometo a:</p>
+  <ul>
+    <li>Usar los datos solo para mi tarea en PFJ 2027.</li>
+    <li>No copiarlos, sacarles captura, reenviarlos ni compartirlos con nadie que no tenga acceso a la app.</li>
+    <li>No dejar mi sesión abierta en un celular que usen otras personas.</li>
+    <li>Avisar enseguida a la coordinación si pierdo el celular o si creo que alguien vio datos que no debía.</li>
+    <li>Guardar el secreto también después del evento (Ley 25.326, art. 10).</li>
+  </ul></div>`;
+function openPrivacy() {
+  if ($('#priv-ov')) return;
+  document.body.insertAdjacentHTML('beforeend', `<div id="priv-ov" class="ov" role="dialog" aria-modal="true" aria-label="Aviso de privacidad">
+    <div class="ov-card"><h2 class="page" style="margin-top:0">Aviso de privacidad</h2>${privacyHTML()}
+    <button class="btn btn-block btn-primary" id="priv-close">Cerrar</button></div></div>`);
+  const ov = $('#priv-ov');
+  ov.onclick = (e) => { if (e.target === ov || e.target.id === 'priv-close') ov.remove(); };
+}
+document.addEventListener('click', (e) => { if (e.target.closest('[data-priv]')) { e.preventDefault(); openPrivacy(); } });
+function renderPrivacy(main) {
+  main.innerHTML = `<h2 class="page">Privacidad</h2>${privacyHTML()}
+    <h3 style="margin:18px 0 6px">Compromiso de confidencialidad del personal</h3>${TERMS_HTML}`;
+}
+// ¿Falta aceptar el compromiso? (la dueña no lo necesita; si la base todavía no lo tiene, no se pide)
+async function checkTerms() {
+  S.needsTerms = false;
+  if (!S.role || S.role === 'dueno' || S.offline) return;
+  const { data, error } = await sb.from('profiles').select('terms_at').eq('email', S.email).maybeSingle();
+  if (!error) S.needsTerms = !(data && data.terms_at);
+}
+function renderTerms(app) {
+  app.innerHTML = `<div class="auth"><div class="auth-card auth-wide"><img src="icon.svg" alt=""><h1>Compromiso de confidencialidad</h1>
+    ${TERMS_HTML}
+    <label class="chk"><input type="checkbox" id="t-ok"> Leí y acepto el compromiso</label>
+    <button class="btn btn-block btn-primary" id="t-go" disabled>Aceptar y entrar</button>
+    <button class="btn btn-block" id="t-out">Salir</button>
+    <div class="auth-foot"><button type="button" class="linkbtn" data-priv>Aviso de privacidad</button></div></div></div>`;
+  $('#t-ok').onchange = (e) => { $('#t-go').disabled = !e.target.checked; };
+  $('#t-out').onclick = logout;
+  $('#t-go').onclick = async () => {
+    $('#t-go').disabled = true;
+    const { error } = await sb.from('profiles').upsert({ email: S.email, terms_at: new Date().toISOString() });
+    if (error) { $('#t-go').disabled = false; return toast(errMsg(error)); }
+    S.needsTerms = false; render();
+  };
 }
 
 /* ---------- ingreso ----------
@@ -617,7 +681,13 @@ function renderLogin(app) {
 async function logout() {
   if (liveChannel) { sb.removeChannel(liveChannel); liveChannel = null; }
   clearInterval(remTimer);
-  try { localStorage.removeItem(OFF_KEY); } catch { /* nada */ }
+  try { localStorage.removeItem(OFF_KEY); localStorage.removeItem(MAP_KEY); } catch { /* nada */ }
+  // Este celular deja de recibir los avisos de esta cuenta.
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const sub = reg && (await reg.pushManager?.getSubscription());
+    if (sub) { await sb.from('push_subs').delete().eq('endpoint', sub.endpoint); await sub.unsubscribe(); }
+  } catch { /* nada */ }
   await sb.auth.signOut();
   Object.assign(S, { email: null, role: null, stake: null, people: [], users: [], requests: [], bishopMarks: {} });
   render();
@@ -1311,17 +1381,26 @@ function loadLeaflet() {
   if (window.L) return Promise.resolve();
   if (leafletReady) return leafletReady;
   leafletReady = new Promise((res, rej) => {
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
-    const js = document.createElement('script'); js.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'; js.onload = res; js.onerror = rej; document.head.appendChild(js);
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'; css.integrity = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'; css.crossOrigin = 'anonymous'; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'; js.integrity = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'; js.crossOrigin = 'anonymous'; js.onload = res; js.onerror = rej; document.head.appendChild(js);
   });
   return leafletReady;
 }
 let mapGeo = null;
+// El mapa del lugar está en la base (solo lo ve quien tiene acceso). Se guarda una copia para usarlo sin conexión.
+const MAP_KEY = 'pfj-mapa';
+async function loadMapGeo() {
+  if (!S.offline) {
+    const { data, error } = await sb.from('settings').select('value').eq('key', 'map_geo').maybeSingle();
+    if (!error && data && data.value) { try { localStorage.setItem(MAP_KEY, data.value); } catch { /* sin espacio */ } return JSON.parse(data.value); }
+  }
+  try { return JSON.parse(localStorage.getItem(MAP_KEY) || 'null'); } catch { return null; }
+}
 async function renderMap(main) {
   const editor = can.editEvent(S.role);
   main.innerHTML = `
     <h2 class="page">Mapa del lugar</h2>
-    <p class="sub">Colegio Santa Rosa · sede Yerba Buena (Av. Pte. Perón 1800, Tucumán).${editor ? ' Tocá un edificio o cualquier punto del mapa para marcar un lugar.' : ''}</p>
+    <p class="sub"><span id="map-lugar"></span>${editor ? ' Tocá un edificio o cualquier punto del mapa para marcar un lugar.' : ''}</p>
     ${!S.extrasOk ? `<div class="callout warn">Los lugares marcados todavía no se pueden guardar.${S.role === 'dueno' ? ' Falta ejecutar <b>04_agenda_avisos_mapa.sql</b> en Supabase.' : ''}</div>` : ''}
     <div id="map" class="map"></div>
     <div id="place-form"></div>
@@ -1332,8 +1411,10 @@ async function renderMap(main) {
     <p class="note">Imagen satelital © Esri · contornos de edificios © colaboradores de OpenStreetMap.</p>`;
   try {
     await loadLeaflet();
-    if (!mapGeo) mapGeo = await fetch('mapa-colegio.json').then((r) => r.json());
+    if (!mapGeo) mapGeo = await loadMapGeo();
   } catch { $('#map', main).innerHTML = '<div class="empty"><p>No se pudo cargar el mapa. Revisá la conexión.</p></div>'; return; }
+  if (!mapGeo) { $('#map', main).innerHTML = `<div class="empty"><p>El mapa todavía no está cargado.${S.role === 'dueno' ? '<br>Falta ejecutar <b>15_seguridad_revision.sql</b> en Supabase.' : ''}</p></div>`; return; }
+  $('#map-lugar', main).textContent = mapGeo.lugar ? mapGeo.lugar + '.' : '';
   const map = L.map($('#map', main), { zoomControl: true }).setView(mapGeo.centro, 18);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 19, attribution: 'Imagen © Esri' }).addTo(map);
   const colors = { predio: '#FFD966', edificio: '#8FB0E8', cancha: '#7FD69B', pileta: '#5DCAEB' };
@@ -1453,6 +1534,7 @@ const MORE_SECTIONS = [
   ] },
   { title: 'Cuenta', items: [
     { id: 'perfil', label: 'Mi perfil', ico: 'user-circle', desc: 'Nombre, teléfono y notificaciones', show: () => true },
+    { id: 'privacidad', label: 'Privacidad', ico: 'shield-lock', desc: 'Cómo se cuidan los datos', show: () => true },
     { id: 'diseno', label: 'Diseño de la app', ico: 'palette', desc: 'Colores, íconos, botones y letra', show: (r) => r === 'dueno' }
   ] }
 ];
@@ -1464,8 +1546,8 @@ function renderMore(main) {
     main.innerHTML = `<button class="backbtn" id="back"><i class="ti ti-chevron-left"></i> Más</button><div id="sub"></div>`;
     $('#back', main).onclick = () => { UI.sub = null; saveUI(); render(); window.scrollTo(0, 0); };
     const sub = $('#sub', main);
-    if (S.offline && !['mapa', 'perfil', 'recordatorios'].includes(m.id)) { sub.innerHTML = '<div class="empty"><p>Esta sección necesita conexión.</p></div>'; return; }
-    return ({ companias: renderCompanies, recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile, recordatorios: renderRemindersPage, diseno: renderDesign }[m.id])(sub);
+    if (S.offline && !['mapa', 'perfil', 'recordatorios', 'privacidad'].includes(m.id)) { sub.innerHTML = '<div class="empty"><p>Esta sección necesita conexión.</p></div>'; return; }
+    return ({ companias: renderCompanies, recuentos: renderHeadcounts, incidentes: renderIncidents, directorio: renderDirectory, mapa: renderMap, obispos: renderBishops, recursos: renderResources, perfil: renderProfile, privacidad: renderPrivacy, recordatorios: renderRemindersPage, diseno: renderDesign }[m.id])(sub);
   }
   main.innerHTML = `<h2 class="page">Más</h2>` + MORE_SECTIONS.map((s) => {
     const vis = s.items.filter((m) => m.show(S.role));
@@ -2024,7 +2106,7 @@ async function renderAccess(main) {
   const drawUsers = () => {
     $('#users', main).innerHTML = `<div class="row-item"><div class="grow"><b>${esc(OWNER)}</b><div class="note">Dueña · acceso total · no se puede quitar</div></div></div>` +
       S.users.map((x) => `<div class="row-item" data-user="${esc(x.email)}">
-        <div class="grow"><b>${esc(x.name || x.email)}</b><div class="note">${x.name ? esc(x.email) + ' · ' : ''}desde ${new Date(x.created_at).toLocaleDateString('es-AR')}</div></div>
+        <div class="grow"><b>${esc(x.name || x.email)}</b><div class="note">${x.name ? esc(x.email) + ' · ' : ''}desde ${new Date(x.created_at).toLocaleDateString('es-AR')} · ${S.terms && S.terms[x.email] ? `<i class="ti ti-circle-check"></i> aceptó confidencialidad el ${new Date(S.terms[x.email]).toLocaleDateString('es-AR')}` : 'todavía no aceptó confidencialidad'}</div></div>
         ${roleSelect('data-f="role"', x.role)} ${stakeSelect('data-f="stake"', x.stake || '')}
         <button class="btn btn-sm btn-danger" data-del>Quitar</button></div>`).join('');
   };
